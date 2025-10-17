@@ -2046,13 +2046,34 @@
         let activeDomains = Array.from(new Set(rawGraphData.nodes.map(node => node.type)));
         let activeRelations = Array.from(new Set(rawGraphData.links.map(link => link.type)));
 
+        function getGraphContainerSize() {
+            const container = document.querySelector('.graph-container');
+            if (!container) {
+                const fallbackWidth = window.innerWidth || document.documentElement.clientWidth || 1280;
+                const fallbackHeight = window.innerHeight || document.documentElement.clientHeight || 720;
+                return {
+                    width: fallbackWidth,
+                    height: fallbackHeight
+                };
+            }
+
+            const rect = container.getBoundingClientRect();
+            const width = Math.max(rect.width, container.clientWidth, 600);
+            const height = Math.max(rect.height, container.clientHeight, 400);
+
+            return { width, height };
+        }
+
         // 初始化图谱
         function init2DGraph() {
             if (currentView !== '2d') {
                 return;
             }
-            const width = document.getElementById('knowledge-graph').clientWidth;
-            const height = document.getElementById('knowledge-graph').clientHeight;
+            const { width, height } = getGraphContainerSize();
+            const svgElement = document.getElementById('knowledge-graph');
+            if (!svgElement) {
+                return;
+            }
 
             // 清除之前的SVG内容
             d3.select('#knowledge-graph').selectAll('*').remove();
@@ -2067,7 +2088,9 @@
             // 创建SVG元素
             svg = d3.select('#knowledge-graph')
                 .attr('width', width)
-                .attr('height', height);
+                .attr('height', height)
+                .style('width', `${width}px`)
+                .style('height', `${height}px`);
                 
             // 添加缩放和平移支持
             zoom = d3.zoom()
@@ -2613,7 +2636,8 @@
                     });
             }
 
-            graph3D.width(container.clientWidth).height(container.clientHeight);
+            const { width, height } = getGraphContainerSize();
+            graph3D.width(width).height(height);
             update3DGraphData();
         }
 
@@ -2680,6 +2704,7 @@
                     toolbar.style.display = 'none';
                 }
                 init3DGraph();
+                resize3DGraph();
                 update3DGraphData();
             } else {
                 svgElement.style.display = 'block';
@@ -2695,7 +2720,8 @@
             if (!graph3D) return;
             const container = document.getElementById('graph-3d');
             if (!container) return;
-            graph3D.width(container.clientWidth).height(container.clientHeight);
+            const { width, height } = getGraphContainerSize();
+            graph3D.width(width).height(height);
         }
 
         // 初始化图谱
