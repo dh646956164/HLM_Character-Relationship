@@ -6,6 +6,7 @@
     <title>红楼梦人物关系知识图谱</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/3d-force-graph@1.73.1/dist/3d-force-graph.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -83,6 +84,15 @@
         #knowledge-graph {
             width: 100%;
             height: 100%;
+        }
+
+        #graph-3d {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
         }
         
         .search-box {
@@ -482,6 +492,14 @@
                         <label><input type="checkbox" id="auto-layout" checked> 自动布局</label>
                     </div>
                 </div>
+
+                <div class="control-section">
+                    <h3>视图模式</h3>
+                    <div class="filter-options" id="view-switcher">
+                        <label><input type="radio" name="graph-view" value="2d" checked> 二维布局</label>
+                        <label><input type="radio" name="graph-view" value="3d"> 三维布局</label>
+                    </div>
+                </div>
                 
                 <div class="control-section">
                     <h3>节点图例</h3>
@@ -535,6 +553,7 @@
             
             <div class="graph-container">
                 <svg id="knowledge-graph"></svg>
+                <div id="graph-3d"></div>
                 <div class="toolbar">
                     <button id="zoom-in"><i class="fas fa-search-plus"></i></button>
                     <button id="zoom-out"><i class="fas fa-search-minus"></i></button>
@@ -1825,6 +1844,9 @@
             }
         });
 
+        const rawGraphData = JSON.parse(JSON.stringify(graphData));
+        const rawNodeMap = new Map(rawGraphData.nodes.map(node => [node.id, node]));
+
         // 颜色映射
         const colorMap = {
             "root": "#d62828",      // 红色 - 总览节点
@@ -1973,6 +1995,30 @@
             };
         }
 
+        function getNodeId(nodeRef) {
+            return typeof nodeRef === 'object' ? nodeRef.id : nodeRef;
+        }
+
+        function getNodeData(nodeRef) {
+            const id = getNodeId(nodeRef);
+            return graphData.nodes.find(node => node.id === id) || rawNodeMap.get(id);
+        }
+
+        function getNodeType(nodeRef) {
+            const nodeData = getNodeData(nodeRef);
+            return nodeData ? nodeData.type : null;
+        }
+
+        function get3DNodeColor(node) {
+            if (currentNode && node.id === currentNode.id) {
+                return '#ffcc00';
+            }
+            if (searchHighlightIds.has(node.id)) {
+                return '#ff8c00';
+            }
+            return colorMap[node.type] || '#adb5bd';
+        }
+
         // 类型名称映射
         const typeNames = {
             "root": "总览节点",
@@ -1987,14 +2033,24 @@
         };
 
         // 全局变量
-        let simulation, zoom, g, node, link, text, linkLabels;
+        let simulation, zoom, g, node, link, text, linkLabels, svg;
         let currentTransform = d3.zoomIdentity;
         let lastNodePositions = {};
         let currentNode = null;
         let relationTypes = new Set();
+        let graph3D = null;
+        let controlsInitialized = false;
+        let relationFiltersInitialized = false;
+        let currentView = '2d';
+        let searchHighlightIds = new Set();
+        let activeDomains = Array.from(new Set(rawGraphData.nodes.map(node => node.type)));
+        let activeRelations = Array.from(new Set(rawGraphData.links.map(link => link.type)));
 
         // 初始化图谱
-        function initKnowledgeGraph() {
+        function init2DGraph() {
+            if (currentView !== '2d') {
+                return;
+            }
             const width = document.getElementById('knowledge-graph').clientWidth;
             const height = document.getElementById('knowledge-graph').clientHeight;
 
@@ -2003,8 +2059,13 @@
 
             prepareLinkLabelOffsets(graphData.links);
 
+            if (!relationFiltersInitialized) {
+                initRelationFilters();
+                relationFiltersInitialized = true;
+            }
+
             // 创建SVG元素
-            const svg = d3.select('#knowledge-graph')
+            svg = d3.select('#knowledge-graph')
                 .attr('width', width)
                 .attr('height', height);
                 
@@ -2118,140 +2179,167 @@
                     .attr('y', d => d.y);
             });
             
-            // 初始化关系类型筛选
-            initRelationFilters();
-            
-            // 工具栏功能
-            document.getElementById('zoom-in').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.scaleBy, 1.5);
-            });
-            
-            document.getElementById('zoom-out').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.scaleBy, 0.75);
-            });
-            
-            document.getElementById('reset-view').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
-                resetNodeStyles();
-            });
-            
-            document.getElementById('center-graph').addEventListener('click', () => {
-                const bounds = document.getElementById('knowledge-graph').getBBox();
-                const parent = document.getElementById('knowledge-graph').parentElement;
-                const fullWidth = parent.clientWidth;
-                const fullHeight = parent.clientHeight;
-                const width = bounds.width;
-                const height = bounds.height;
-                const midX = bounds.x + width / 2;
-                const midY = bounds.y + height / 2;
-                
-                if (width === 0 || height === 0) return;
-                
-                const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
-                const translate = [
-                    fullWidth / 2 - scale * midX,
-                    fullHeight / 2 - scale * midY
-                ];
-                
-                svg.transition().duration(500).call(
-                    zoom.transform,
-                    d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-                );
-            });
-            
-            // 关闭详情面板
-            document.querySelector('.close-details').addEventListener('click', () => {
-                document.querySelector('.node-details').style.display = 'none';
-                resetNodeStyles();
-                currentNode = null;
-            });
-            
-            // 搜索功能
-            const searchInput = document.getElementById('search-input');
-            const searchResults = document.getElementById('search-results');
-            
-            searchInput.addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
-                searchResults.innerHTML = '';
-                
-                if (searchTerm.length === 0) {
-                    searchResults.style.display = 'none';
+            if (!controlsInitialized) {
+                const searchInput = document.getElementById('search-input');
+                const searchResults = document.getElementById('search-results');
+
+                // 工具栏功能
+                document.getElementById('zoom-in').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        svg.transition().duration(500).call(zoom.scaleBy, 1.5);
+                    }
+                });
+
+                document.getElementById('zoom-out').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        svg.transition().duration(500).call(zoom.scaleBy, 0.75);
+                    }
+                });
+
+                document.getElementById('reset-view').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+                    } else if (currentView === '3d' && graph3D) {
+                        graph3D.zoomToFit(1000, 100);
+                    }
                     resetNodeStyles();
-                    return;
-                }
-                
-                const foundNodes = graphData.nodes.filter(n => 
-                    n.name.toLowerCase().includes(searchTerm) || 
-                    n.description.toLowerCase().includes(searchTerm)
-                );
-                
-                if (foundNodes.length > 0) {
-                    searchResults.style.display = 'block';
-                    foundNodes.forEach(n => {
-                        const resultItem = document.createElement('div');
-                        resultItem.className = 'search-result-item';
-                        resultItem.textContent = n.name;
-                        resultItem.setAttribute('data-node-id', n.id);
-                        resultItem.addEventListener('click', () => {
-                            searchInput.value = '';
-                            searchResults.style.display = 'none';
-                            focusOnNode(n.id);
+                });
+
+                document.getElementById('center-graph').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        const bounds = document.getElementById('knowledge-graph').getBBox();
+                        const parent = document.getElementById('knowledge-graph').parentElement;
+                        const fullWidth = parent.clientWidth;
+                        const fullHeight = parent.clientHeight;
+                        const width = bounds.width;
+                        const height = bounds.height;
+                        const midX = bounds.x + width / 2;
+                        const midY = bounds.y + height / 2;
+
+                        if (width === 0 || height === 0) return;
+
+                        const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
+                        const translate = [
+                            fullWidth / 2 - scale * midX,
+                            fullHeight / 2 - scale * midY
+                        ];
+
+                        svg.transition().duration(500).call(
+                            zoom.transform,
+                            d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+                        );
+                    } else if (currentView === '3d' && graph3D) {
+                        graph3D.zoomToFit(1000, 100);
+                    }
+                });
+
+                // 关闭详情面板
+                document.querySelector('.close-details').addEventListener('click', () => {
+                    document.querySelector('.node-details').style.display = 'none';
+                    currentNode = null;
+                    resetNodeStyles();
+                });
+
+                // 搜索功能
+                searchInput.addEventListener('input', (e) => {
+                    const searchTerm = e.target.value.toLowerCase();
+                    searchResults.innerHTML = '';
+
+                    if (searchTerm.length === 0) {
+                        searchResults.style.display = 'none';
+                        resetNodeStyles();
+                        searchHighlightIds = new Set();
+                        if (graph3D) {
+                            graph3D.nodeColor(get3DNodeColor);
+                        }
+                        return;
+                    }
+
+                    const foundNodes = graphData.nodes.filter(n =>
+                        n.name.toLowerCase().includes(searchTerm) ||
+                        n.description.toLowerCase().includes(searchTerm)
+                    );
+
+                    if (foundNodes.length > 0) {
+                        searchResults.style.display = 'block';
+                        foundNodes.forEach(n => {
+                            const resultItem = document.createElement('div');
+                            resultItem.className = 'search-result-item';
+                            resultItem.textContent = n.name;
+                            resultItem.setAttribute('data-node-id', n.id);
+                            resultItem.addEventListener('click', () => {
+                                searchInput.value = '';
+                                searchResults.style.display = 'none';
+                                focusOnNode(n.id);
+                            });
+                            searchResults.appendChild(resultItem);
                         });
-                        searchResults.appendChild(resultItem);
+                    } else {
+                        searchResults.style.display = 'none';
+                    }
+
+                    // 高亮匹配节点
+                    resetNodeStyles();
+                    searchHighlightIds = new Set(foundNodes.map(n => n.id));
+                    if (node) {
+                        node.filter(d => foundNodes.some(n => n.id === d.id))
+                            .classed('highlighted', true);
+                    }
+                    if (text) {
+                        text.filter(d => foundNodes.some(n => n.id === d.id))
+                            .classed('highlighted', true);
+                    }
+                    if (graph3D) {
+                        graph3D.nodeColor(get3DNodeColor);
+                    }
+                });
+
+                // 点击其他地方关闭搜索结果
+                document.addEventListener('click', (e) => {
+                    if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                        searchResults.style.display = 'none';
+                    }
+                });
+
+                // 知识领域筛选
+                document.querySelectorAll('#domain-filters input').forEach(filter => {
+                    filter.addEventListener('change', applyFilters);
+                });
+
+                // 关系类型筛选
+                document.querySelectorAll('#relation-filters input').forEach(filter => {
+                    filter.addEventListener('change', applyFilters);
+                });
+
+                // 图谱操作
+                document.getElementById('show-links').addEventListener('change', applyFilters);
+                document.getElementById('show-labels').addEventListener('change', applyFilters);
+                document.getElementById('show-link-labels').addEventListener('change', applyFilters);
+
+                document.getElementById('auto-layout').addEventListener('change', function() {
+                    if (this.checked) {
+                        simulation.alphaTarget(0.3).restart();
+                    } else {
+                        simulation.alphaTarget(0.001);
+                    }
+                });
+
+                document.querySelectorAll('input[name="graph-view"]').forEach(radio => {
+                    radio.addEventListener('change', (event) => {
+                        if (!event.target.checked) return;
+                        switchGraphView(event.target.value);
                     });
-                } else {
-                    searchResults.style.display = 'none';
-                }
-                
-                // 高亮匹配节点
-                resetNodeStyles();
-                node.filter(d => foundNodes.some(n => n.id === d.id))
-                    .classed('highlighted', true);
-                text.filter(d => foundNodes.some(n => n.id === d.id))
-                    .classed('highlighted', true);
-            });
-            
-            // 点击其他地方关闭搜索结果
-            document.addEventListener('click', (e) => {
-                if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
-                    searchResults.style.display = 'none';
-                }
-            });
-            
-            // 知识领域筛选
-            const domainFilters = document.querySelectorAll('#domain-filters input');
-            domainFilters.forEach(filter => {
-                filter.addEventListener('change', applyFilters);
-            });
-            
-            // 关系类型筛选
-            const relationFilters = document.querySelectorAll('#relation-filters input');
-            relationFilters.forEach(filter => {
-                filter.addEventListener('change', applyFilters);
-            });
-            
-            // 图谱操作
-            document.getElementById('show-links').addEventListener('change', function() {
-                link.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('show-labels').addEventListener('change', function() {
-                text.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('show-link-labels').addEventListener('change', function() {
-                linkLabels.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('auto-layout').addEventListener('change', function() {
-                if (this.checked) {
-                    simulation.alphaTarget(0.3).restart();
-                } else {
-                    // 当自动布局关闭时，我们不完全停止模拟，而是保持一个非常低的alphaTarget
-                    // 这样节点仍然可以响应拖拽事件
-                    simulation.alphaTarget(0.001);
-                }
-            });
+                });
+
+                controlsInitialized = true;
+            }
+
+            applyFilters();
+
+            const detailsPanelVisible = document.querySelector('.node-details').style.display !== 'none';
+            if (currentNode && detailsPanelVisible) {
+                showNodeDetails(null, currentNode);
+            }
         }
         
         // 初始化关系类型筛选
@@ -2286,39 +2374,71 @@
         function applyFilters() {
             const selectedDomains = Array.from(document.querySelectorAll('#domain-filters input:checked'))
                 .map(input => input.value);
-                
+
             const selectedRelations = Array.from(document.querySelectorAll('#relation-filters input:checked'))
                 .map(input => input.value);
-                
-            node.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
-            text.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
-            
-            // 隐藏/显示相关连线
-            link.style('display', d => {
-                const sourceVisible = selectedDomains.includes(d.source.type);
-                const targetVisible = selectedDomains.includes(d.target.type);
-                const relationVisible = selectedRelations.includes(d.type);
-                return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
-            });
-            
-            linkLabels.style('display', d => {
-                const sourceVisible = selectedDomains.includes(d.source.type);
-                const targetVisible = selectedDomains.includes(d.target.type);
-                const relationVisible = selectedRelations.includes(d.type);
-                const showLabels = document.getElementById('show-link-labels').checked;
-                return sourceVisible && targetVisible && relationVisible && showLabels ? 'block' : 'none';
-            });
+
+            activeDomains = selectedDomains;
+            activeRelations = selectedRelations;
+
+            const showLinks = document.getElementById('show-links').checked;
+            const showLabels = document.getElementById('show-labels').checked;
+            const showLinkLabels = document.getElementById('show-link-labels').checked;
+
+            if (node) {
+                node.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
+            }
+
+            if (text) {
+                text.style('display', d => (selectedDomains.includes(d.type) && showLabels) ? 'block' : 'none');
+            }
+
+            if (link) {
+                link.style('display', d => {
+                    if (!showLinks) return 'none';
+                    const sourceType = getNodeType(d.source);
+                    const targetType = getNodeType(d.target);
+                    const relationVisible = selectedRelations.includes(d.type);
+                    const sourceVisible = sourceType ? selectedDomains.includes(sourceType) : false;
+                    const targetVisible = targetType ? selectedDomains.includes(targetType) : false;
+                    return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
+                });
+            }
+
+            if (linkLabels) {
+                linkLabels.style('display', d => {
+                    if (!showLinkLabels) return 'none';
+                    const sourceType = getNodeType(d.source);
+                    const targetType = getNodeType(d.target);
+                    const relationVisible = selectedRelations.includes(d.type);
+                    const sourceVisible = sourceType ? selectedDomains.includes(sourceType) : false;
+                    const targetVisible = targetType ? selectedDomains.includes(targetType) : false;
+                    return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
+                });
+            }
+
+            update3DGraphData();
         }
         
         // 重置节点样式
         function resetNodeStyles() {
-            node.classed('highlighted', false)
-                .attr('fill', d => colorMap[d.type])
-                .attr('stroke', 'none');
-                
-            text.classed('highlighted', false)
-                .style('font-weight', d => d.id === 0 ? 'bold' : 'normal')
-                .style('font-size', d => d.id === 0 ? '14px' : '12px');
+            if (node) {
+                node.classed('highlighted', false)
+                    .attr('fill', d => colorMap[d.type])
+                    .attr('stroke', 'none');
+            }
+
+            if (text) {
+                text.classed('highlighted', false)
+                    .style('font-weight', d => d.id === 0 ? 'bold' : 'normal')
+                    .style('font-size', d => d.id === 0 ? '14px' : '12px');
+            }
+
+            searchHighlightIds = new Set();
+
+            if (graph3D) {
+                graph3D.nodeColor(get3DNodeColor);
+            }
         }
         
         // 拖动函数 - 确保节点和图形同步移动
@@ -2350,27 +2470,32 @@
         
         // 显示节点详情
         function showNodeDetails(event, d) {
-            currentNode = d;
+            const baseNode = getNodeData(d);
+            if (!baseNode) return;
+
+            currentNode = baseNode;
             const detailsPanel = document.querySelector('.node-details');
-            document.getElementById('detail-title').textContent = d.name;
-            document.getElementById('detail-type').textContent = typeNames[d.type] || d.type;
-            document.getElementById('detail-description').textContent = d.description;
-            
+            document.getElementById('detail-title').textContent = baseNode.name;
+            document.getElementById('detail-type').textContent = typeNames[baseNode.type] || baseNode.type;
+            document.getElementById('detail-description').textContent = baseNode.description;
+
             // 清空相关节点
             const relatedNodesContainer = document.getElementById('related-nodes');
             relatedNodesContainer.innerHTML = '';
-            
+
             // 查找相关节点
-            const relatedLinks = graphData.links.filter(link => 
-                link.source.id === d.id || link.target.id === d.id
+            const relatedLinks = graphData.links.filter(link =>
+                getNodeId(link.source) === baseNode.id || getNodeId(link.target) === baseNode.id
             );
-            
+
             const relatedNodeIds = new Set();
             relatedLinks.forEach(link => {
-                if (link.source.id !== d.id) relatedNodeIds.add(link.source.id);
-                if (link.target.id !== d.id) relatedNodeIds.add(link.target.id);
+                const sourceId = getNodeId(link.source);
+                const targetId = getNodeId(link.target);
+                if (sourceId !== baseNode.id) relatedNodeIds.add(sourceId);
+                if (targetId !== baseNode.id) relatedNodeIds.add(targetId);
             });
-            
+
             // 添加相关节点
             relatedNodeIds.forEach(id => {
                 const relatedNode = graphData.nodes.find(node => node.id === id);
@@ -2391,8 +2516,8 @@
             const bioListContainer = document.getElementById('bio-list');
             bioListContainer.innerHTML = '';
 
-            if (d.highlights && d.highlights.length > 0) {
-                d.highlights.forEach(item => {
+            if (baseNode.highlights && baseNode.highlights.length > 0) {
+                baseNode.highlights.forEach(item => {
                     const bioItem = document.createElement('p');
                     bioItem.className = 'bio-item';
                     bioItem.textContent = item;
@@ -2407,47 +2532,185 @@
             
             // 显示详情面板
             detailsPanel.style.display = 'block';
-            
+
             // 高亮当前节点
             resetNodeStyles();
-            node.filter(d => d.id === currentNode.id)
-                .classed('highlighted', true)
-                .attr('stroke', '#ffcc00')
-                .attr('stroke-width', 3);
-                
-            text.filter(d => d.id === currentNode.id)
-                .classed('highlighted', true);
+            if (node) {
+                node.filter(nodeDatum => nodeDatum.id === currentNode.id)
+                    .classed('highlighted', true)
+                    .attr('stroke', '#ffcc00')
+                    .attr('stroke-width', 3);
+            }
+
+            if (text) {
+                text.filter(nodeDatum => nodeDatum.id === currentNode.id)
+                    .classed('highlighted', true);
+            }
+
+            if (graph3D) {
+                graph3D.nodeColor(get3DNodeColor);
+            }
         }
         
         // 定位到特定节点
         function focusOnNode(nodeId) {
-            const nodeData = graphData.nodes.find(n => n.id === nodeId);
+            const nodeData = getNodeData(nodeId);
             if (!nodeData) return;
-            
-            const svg = d3.select('#knowledge-graph');
+
+            if (currentView === '3d' && graph3D) {
+                const graphDataset = graph3D.graphData();
+                const node3D = graphDataset.nodes.find(n => n.id === nodeId);
+                if (node3D) {
+                    const distance = 120;
+                    const nodeX = node3D.x || 0;
+                    const nodeY = node3D.y || 0;
+                    const nodeZ = node3D.z || 0;
+                    const currentDistance = Math.max(10, Math.hypot(nodeX, nodeY, nodeZ));
+                    const distRatio = 1 + distance / currentDistance;
+                    graph3D.cameraPosition(
+                        { x: nodeX * distRatio, y: nodeY * distRatio, z: nodeZ * distRatio },
+                        node3D,
+                        1000
+                    );
+                }
+
+                showNodeDetails(null, nodeData);
+                return;
+            }
+
             const width = document.getElementById('knowledge-graph').clientWidth;
             const height = document.getElementById('knowledge-graph').clientHeight;
-            
-            // 使用保存的位置信息
-            const nodePosition = lastNodePositions[nodeId] || { x: width/2, y: height/2 };
-            
-            // 计算缩放和平移
+
+            const nodePosition = lastNodePositions[nodeId] || { x: width / 2, y: height / 2 };
+
             const scale = 2.5;
             const x = width / 2 - scale * nodePosition.x;
             const y = height / 2 - scale * nodePosition.y;
-            
-            // 执行动画
-            svg.transition()
-                .duration(750)
-                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
-            
-            // 高亮节点并显示详情
+
+            if (svg) {
+                svg.transition()
+                    .duration(750)
+                    .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+            }
+
             showNodeDetails(null, nodeData);
         }
-        
+
+        function init3DGraph() {
+            const container = document.getElementById('graph-3d');
+            if (!container) return;
+
+            if (!graph3D) {
+                graph3D = ForceGraph3D()(container)
+                    .backgroundColor('rgba(0, 0, 0, 0)')
+                    .nodeLabel(node => `${node.name}`)
+                    .nodeColor(get3DNodeColor)
+                    .linkColor(link => relationColorMap[link.type] || '#999')
+                    .linkWidth(1.5)
+                    .linkOpacity(0.6)
+                    .onNodeClick(node => {
+                        focusOnNode(node.id);
+                    });
+            }
+
+            graph3D.width(container.clientWidth).height(container.clientHeight);
+            update3DGraphData();
+        }
+
+        function update3DGraphData() {
+            if (!graph3D) {
+                return;
+            }
+
+            const selectedDomains = activeDomains && activeDomains.length > 0
+                ? activeDomains
+                : Array.from(new Set(rawGraphData.nodes.map(node => node.type)));
+
+            const selectedRelations = activeRelations && activeRelations.length > 0
+                ? activeRelations
+                : Array.from(new Set(rawGraphData.links.map(link => link.type)));
+
+            const filteredNodes = rawGraphData.nodes
+                .filter(node => selectedDomains.includes(node.type))
+                .map(node => ({ ...node }));
+
+            const allowedNodeIds = new Set(filteredNodes.map(node => node.id));
+
+            const filteredLinks = rawGraphData.links
+                .filter(link => {
+                    const sourceId = getNodeId(link.source);
+                    const targetId = getNodeId(link.target);
+                    const sourceNode = rawNodeMap.get(sourceId);
+                    const targetNode = rawNodeMap.get(targetId);
+                    if (!sourceNode || !targetNode) return false;
+                    const domainVisible = selectedDomains.includes(sourceNode.type) && selectedDomains.includes(targetNode.type);
+                    return domainVisible && selectedRelations.includes(link.type);
+                })
+                .map(link => ({
+                    source: getNodeId(link.source),
+                    target: getNodeId(link.target),
+                    relation: link.relation,
+                    type: link.type
+                }));
+
+            graph3D.graphData({
+                nodes: filteredNodes,
+                links: filteredLinks
+            });
+
+            graph3D.nodeColor(get3DNodeColor);
+
+            if (currentNode && allowedNodeIds.has(currentNode.id)) {
+                graph3D.nodeColor(get3DNodeColor);
+            }
+        }
+
+        function switchGraphView(targetView) {
+            if (targetView === currentView) return;
+
+            currentView = targetView;
+            const svgElement = document.getElementById('knowledge-graph');
+            const graph3DContainer = document.getElementById('graph-3d');
+            const toolbar = document.querySelector('.toolbar');
+
+            if (currentView === '3d') {
+                svgElement.style.display = 'none';
+                graph3DContainer.style.display = 'block';
+                if (toolbar) {
+                    toolbar.style.display = 'none';
+                }
+                init3DGraph();
+                update3DGraphData();
+            } else {
+                svgElement.style.display = 'block';
+                graph3DContainer.style.display = 'none';
+                if (toolbar) {
+                    toolbar.style.display = 'flex';
+                }
+                init2DGraph();
+            }
+        }
+
+        function resize3DGraph() {
+            if (!graph3D) return;
+            const container = document.getElementById('graph-3d');
+            if (!container) return;
+            graph3D.width(container.clientWidth).height(container.clientHeight);
+        }
+
         // 初始化图谱
-        window.addEventListener('load', initKnowledgeGraph);
-        window.addEventListener('resize', initKnowledgeGraph);
+        window.addEventListener('load', () => {
+            init2DGraph();
+            update3DGraphData();
+        });
+
+        window.addEventListener('resize', () => {
+            if (currentView === '2d') {
+                init2DGraph();
+            } else {
+                resize3DGraph();
+            }
+        });
     </script>
 </body>
 </html>
