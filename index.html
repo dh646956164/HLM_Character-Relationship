@@ -3042,6 +3042,40 @@
                 .attr('y', d => d.y);
         }
 
+        function applyAutoLayoutState2D(enabled) {
+            autoLayoutEnabled2D = enabled;
+
+            if (!simulation) {
+                return;
+            }
+
+            if (autoLayoutEnabled2D) {
+                graphData.nodes.forEach(nodeDatum => {
+                    nodeDatum.fx = null;
+                    nodeDatum.fy = null;
+                    nodeDatum.vx = 0;
+                    nodeDatum.vy = 0;
+                });
+                simulation.alpha(0.8).alphaTarget(0.3).restart();
+            } else {
+                simulation.alphaTarget(0);
+                simulation.stop();
+                const { width, height } = getGraphContainerSize();
+                graphData.nodes.forEach(nodeDatum => {
+                    const stored = lastNodePositions[nodeDatum.id];
+                    const x = typeof nodeDatum.x === 'number' ? nodeDatum.x : (stored ? stored.x : width / 2);
+                    const y = typeof nodeDatum.y === 'number' ? nodeDatum.y : (stored ? stored.y : height / 2);
+                    nodeDatum.x = x;
+                    nodeDatum.y = y;
+                    nodeDatum.fx = x;
+                    nodeDatum.fy = y;
+                    nodeDatum.vx = 0;
+                    nodeDatum.vy = 0;
+                });
+                update2DGraphPositions();
+            }
+        }
+
         // 初始化图谱
         function init2DGraph() {
             if (currentView !== '2d') {
@@ -3161,11 +3195,7 @@
                 update2DGraphPositions();
             });
 
-            if (!autoLayoutEnabled2D) {
-                simulation.alphaTarget(0);
-                simulation.stop();
-                update2DGraphPositions();
-            }
+            applyAutoLayoutState2D(autoLayoutEnabled2D);
             
             if (!controlsInitialized) {
                 const searchInput = document.getElementById('search-input');
@@ -3315,16 +3345,7 @@
                 document.getElementById('show-link-labels').addEventListener('change', applyFilters);
 
                 document.getElementById('auto-layout').addEventListener('change', function() {
-                    autoLayoutEnabled2D = this.checked;
-                    if (simulation) {
-                        if (autoLayoutEnabled2D) {
-                            simulation.alpha(0.8).alphaTarget(0.3).restart();
-                        } else {
-                            simulation.alphaTarget(0);
-                            simulation.stop();
-                            update2DGraphPositions();
-                        }
-                    }
+                    applyAutoLayoutState2D(this.checked);
                     if (graph3DRenderer) {
                         graph3DRenderer.setAutoLayoutEnabled(this.checked);
                     }
@@ -3472,6 +3493,8 @@
             } else {
                 d.x = event.x;
                 d.y = event.y;
+                d.fx = event.x;
+                d.fy = event.y;
                 update2DGraphPositions();
             }
         }
@@ -3489,10 +3512,13 @@
             if (!autoLayoutEnabled2D) {
                 d.x = event.x;
                 d.y = event.y;
+                d.fx = event.x;
+                d.fy = event.y;
                 update2DGraphPositions();
+            } else {
+                d.fx = null;
+                d.fy = null;
             }
-            d.fx = null;
-            d.fy = null;
         }
         
         // 显示节点详情
