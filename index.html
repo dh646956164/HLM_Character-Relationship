@@ -994,6 +994,31 @@
             ]
         };
 
+        const relationAliasMap = {
+            "父": "父亲",
+            "母": "母亲",
+            "丫头": "侍女",
+            "丫环": "侍女",
+            "大丫头": "首席侍女",
+            "大丫环": "首席侍女",
+            "好友": "朋友",
+            "好朋友": "朋友",
+            "好兄弟": "朋友"
+        };
+
+        function normalizeRelationData(graph) {
+            graph.links.forEach(link => {
+                if (relationAliasMap[link.type]) {
+                    link.type = relationAliasMap[link.type];
+                }
+                if (relationAliasMap[link.relation]) {
+                    link.relation = relationAliasMap[link.relation];
+                }
+            });
+        }
+
+        normalizeRelationData(graphData);
+
         const characterProfiles = {
             "红楼梦人物关系图谱": {
                 description: "汇集《红楼梦》中贾府与王、史、林、薛等家族的核心人物、亲缘与社交网络。",
@@ -1837,8 +1862,8 @@
             "丈夫": "#264653",
             "妻": "#e9c46a",
             "妾": "#f4a261",
-            "丫环": "#8ecae6",
-            "丫头": "#8ecae6",
+            "侍女": "#8ecae6",
+            "首席侍女": "#74c69d",
             "小厮": "#4a4e69",
             "乳母": "#b07d62",
             "老奴": "#6c757d",
@@ -1872,14 +1897,9 @@
             "外甥女": "#ffc8dd",
             "陪房": "#6f4d7c",
             "陪房丫头": "#6f4d7c",
-            "大丫头": "#74c69d",
-            "大丫环": "#74c69d",
             "二房": "#c77dff",
             "夫妻": "#ff8500",
             "朋友": "#6d597a",
-            "好友": "#6d597a",
-            "好朋友": "#6d597a",
-            "好兄弟": "#6d597a",
             "老师": "#277da1",
             "女婿": "#bc4749",
             "岳母": "#f94144",
