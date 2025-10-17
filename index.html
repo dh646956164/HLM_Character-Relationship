@@ -2043,6 +2043,14 @@
             const ctx = canvas.getContext('2d');
             const defaultRotationX = -0.35;
             const defaultRotationY = 0.55;
+            const baseLayoutConfig = {
+                repulsionStrength: 2400,
+                linkDistance: 160,
+                linkStrength: 0.015,
+                centeringStrength: 0.0045,
+                layeringStrength: 0.018,
+                damping: 0.86
+            };
             const depthMap = options.layerDepthMap || {
                 root: -40,
                 family: -140,
@@ -2062,6 +2070,7 @@
                 links: [],
                 projectedNodes: [],
                 basePositions: new Map(),
+                nodeLookup: new Map(),
                 rotationX: defaultRotationX,
                 rotationY: defaultRotationY,
                 targetRotationX: defaultRotationX,
@@ -2074,6 +2083,14 @@
                 autoRotate: true,
                 autoRotateSpeed: 0.0008,
                 needsRedraw: true,
+                showLinks: true,
+                showLabels: true,
+                showLinkLabels: false,
+                autoLayoutEnabled: true,
+                layoutConfig: {
+                    ...baseLayoutConfig,
+                    ...(options.layoutConfig || {})
+                },
                 pointerActive: false,
                 pointerMoved: false,
                 pointerLastX: 0,
@@ -2133,21 +2150,42 @@
             }
 
             function setData(nodes, links) {
+                state.nodeLookup.clear();
                 state.nodes = nodes.map(node => {
                     const base = ensureBasePosition(node);
-                    return {
+                    const positioned = {
                         ...node,
                         baseX: base.x,
                         baseY: base.y,
-                        baseZ: base.z
+                        baseZ: base.z,
+                        x: base.x,
+                        y: base.y,
+                        z: base.z,
+                        vx: 0,
+                        vy: 0,
+                        vz: 0,
+                        fx: 0,
+                        fy: 0,
+                        fz: 0
                     };
+                    state.nodeLookup.set(node.id, positioned);
+                    return positioned;
                 });
 
-                state.links = links.map(link => ({
-                    source: link.source,
-                    target: link.target,
-                    type: link.type
-                }));
+                state.links = [];
+                links.forEach(link => {
+                    const sourceId = link.source;
+                    const targetId = link.target;
+                    if (!state.nodeLookup.has(sourceId) || !state.nodeLookup.has(targetId)) {
+                        return;
+                    }
+                    state.links.push({
+                        source: sourceId,
+                        target: targetId,
+                        type: link.type,
+                        relation: link.relation || link.type
+                    });
+                });
 
                 state.projectedNodes = [];
                 state.needsRedraw = true;
@@ -2170,11 +2208,12 @@
             }
 
             function focusNode(nodeId) {
-                const node = state.nodes.find(n => n.id === nodeId);
+                const node = state.nodeLookup.get(nodeId);
                 if (!node) return;
 
-                const angleY = Math.atan2(node.baseX, -node.baseZ);
-                const angleX = Math.atan2(node.baseY, -node.baseZ);
+                const depth = node.z === 0 ? -1 : -node.z;
+                const angleY = Math.atan2(node.x, depth);
+                const angleX = Math.atan2(node.y, depth);
 
                 state.targetRotationY = angleY;
                 state.targetRotationX = -angleX;
@@ -2215,6 +2254,56 @@
                 }
             }
 
+            function setShowLinks(show) {
+                const value = Boolean(show);
+                if (state.showLinks !== value) {
+                    state.showLinks = value;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setShowLabels(show) {
+                const value = Boolean(show);
+                if (state.showLabels !== value) {
+                    state.showLabels = value;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setShowLinkLabels(show) {
+                const value = Boolean(show);
+                if (state.showLinkLabels !== value) {
+                    state.showLinkLabels = value;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setAutoLayoutEnabled(enabled) {
+                const value = Boolean(enabled);
+                if (state.autoLayoutEnabled === value) {
+                    return;
+                }
+
+                state.autoLayoutEnabled = value;
+                state.nodes.forEach(node => {
+                    node.vx = 0;
+                    node.vy = 0;
+                    node.vz = 0;
+                });
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
+            function zoomBy(factor) {
+                if (typeof factor !== 'number' || !isFinite(factor)) {
+                    return;
+                }
+                stopAutoRotate();
+                state.targetScale = Math.min(2.5, Math.max(0.35, state.targetScale * factor));
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
             function handleClick(event) {
                 const rect = canvas.getBoundingClientRect();
                 const x = event.clientX - rect.left;
@@ -2238,6 +2327,99 @@
                 }
             }
 
+            function stepAutoLayout() {
+                if (!state.autoLayoutEnabled || state.nodes.length === 0) {
+                    return false;
+                }
+
+                const {
+                    repulsionStrength,
+                    linkDistance,
+                    linkStrength,
+                    centeringStrength,
+                    layeringStrength,
+                    damping
+                } = state.layoutConfig;
+
+                const nodes = state.nodes;
+                const nodeCount = nodes.length;
+
+                for (let i = 0; i < nodeCount; i++) {
+                    const node = nodes[i];
+                    node.fx = 0;
+                    node.fy = 0;
+                    node.fz = 0;
+                }
+
+                for (let i = 0; i < nodeCount; i++) {
+                    const nodeA = nodes[i];
+                    for (let j = i + 1; j < nodeCount; j++) {
+                        const nodeB = nodes[j];
+                        let dx = nodeA.x - nodeB.x;
+                        let dy = nodeA.y - nodeB.y;
+                        let dz = nodeA.z - nodeB.z;
+                        const distanceSq = dx * dx + dy * dy + dz * dz + 0.01;
+                        const force = repulsionStrength / distanceSq;
+                        const distance = Math.sqrt(distanceSq);
+                        dx /= distance;
+                        dy /= distance;
+                        dz /= distance;
+                        nodeA.fx += dx * force;
+                        nodeA.fy += dy * force;
+                        nodeA.fz += dz * force;
+                        nodeB.fx -= dx * force;
+                        nodeB.fy -= dy * force;
+                        nodeB.fz -= dz * force;
+                    }
+                }
+
+                state.links.forEach(link => {
+                    const source = state.nodeLookup.get(link.source);
+                    const target = state.nodeLookup.get(link.target);
+                    if (!source || !target) return;
+                    let dx = target.x - source.x;
+                    let dy = target.y - source.y;
+                    let dz = target.z - source.z;
+                    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.0001;
+                    const delta = distance - linkDistance;
+                    const force = delta * linkStrength;
+                    dx /= distance;
+                    dy /= distance;
+                    dz /= distance;
+                    source.fx += dx * force;
+                    source.fy += dy * force;
+                    source.fz += dz * force;
+                    target.fx -= dx * force;
+                    target.fy -= dy * force;
+                    target.fz -= dz * force;
+                });
+
+                let moved = false;
+                for (let i = 0; i < nodeCount; i++) {
+                    const node = nodes[i];
+                    node.fx += -node.x * centeringStrength;
+                    node.fy += -node.y * centeringStrength;
+                    node.fz += (node.baseZ - node.z) * layeringStrength;
+
+                    node.vx = (node.vx + node.fx) * damping;
+                    node.vy = (node.vy + node.fy) * damping;
+                    node.vz = (node.vz + node.fz) * damping;
+
+                    const speedSq = node.vx * node.vx + node.vy * node.vy + node.vz * node.vz;
+                    if (speedSq > 0.00005) {
+                        moved = true;
+                    }
+
+                    node.x += node.vx;
+                    node.y += node.vy;
+                    node.z += node.vz;
+
+                    state.basePositions.set(node.id, { x: node.x, y: node.y, z: node.z });
+                }
+
+                return moved;
+            }
+
             function renderFrame() {
                 state.animationFrameId = requestAnimationFrame(renderFrame);
 
@@ -2250,7 +2432,9 @@
                 state.rotationX += (state.targetRotationX - state.rotationX) * 0.08;
                 state.scale += (state.targetScale - state.scale) * 0.08;
 
-                if (!state.needsRedraw &&
+                const layoutChanged = stepAutoLayout();
+
+                if (!state.needsRedraw && !layoutChanged &&
                     Math.abs(state.rotationX - state.targetRotationX) < 0.0005 &&
                     Math.abs(state.rotationY - state.targetRotationY) < 0.0005 &&
                     Math.abs(state.scale - state.targetScale) < 0.0005) {
@@ -2271,9 +2455,9 @@
                 const projected = [];
 
                 state.nodes.forEach(node => {
-                    const x = node.baseX;
-                    const y = node.baseY;
-                    const z = node.baseZ;
+                    const x = node.x;
+                    const y = node.y;
+                    const z = node.z;
 
                     let x1 = x * cosY - z * sinY;
                     let z1 = x * sinY + z * cosY;
@@ -2305,20 +2489,62 @@
 
                 const projectedMap = new Map(projected.map(item => [item.node.id, item]));
 
-                ctx.save();
-                ctx.globalAlpha = 0.65;
-                state.links.forEach(link => {
-                    const source = projectedMap.get(link.source);
-                    const target = projectedMap.get(link.target);
-                    if (!source || !target) return;
-                    ctx.strokeStyle = state.getLinkColor(link);
-                    ctx.lineWidth = Math.max(0.6, 1.1 * Math.min(source.perspective, target.perspective));
-                    ctx.beginPath();
-                    ctx.moveTo(source.x, source.y);
-                    ctx.lineTo(target.x, target.y);
-                    ctx.stroke();
-                });
-                ctx.restore();
+                if (state.showLinks || state.showLinkLabels) {
+                    const linkOpacity = state.showLinks ? 0.65 : 0;
+                    if (state.showLinks) {
+                        ctx.save();
+                        ctx.globalAlpha = linkOpacity;
+                        state.links.forEach(link => {
+                            const source = projectedMap.get(link.source);
+                            const target = projectedMap.get(link.target);
+                            if (!source || !target) return;
+                            ctx.strokeStyle = state.getLinkColor(link);
+                            ctx.lineWidth = Math.max(0.6, 1.1 * Math.min(source.perspective, target.perspective));
+                            ctx.beginPath();
+                            ctx.moveTo(source.x, source.y);
+                            ctx.lineTo(target.x, target.y);
+                            ctx.stroke();
+                        });
+                        ctx.restore();
+                    }
+
+                    if (state.showLinkLabels) {
+                        ctx.save();
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        state.links.forEach(link => {
+                            const source = projectedMap.get(link.source);
+                            const target = projectedMap.get(link.target);
+                            if (!source || !target) return;
+                            const midX = (source.x + target.x) / 2;
+                            const midY = (source.y + target.y) / 2;
+                            const depthFactor = Math.min(source.perspective, target.perspective);
+                            const fontSize = Math.max(10, Math.min(16, 11 + depthFactor * 4));
+                            ctx.font = `${fontSize}px 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+                            const label = link.relation || link.type || '';
+                            if (!label) return;
+                            const metrics = ctx.measureText(label);
+                            const paddingX = 6;
+                            const paddingY = 4;
+                            const boxWidth = metrics.width + paddingX * 2;
+                            const boxHeight = fontSize + paddingY * 2;
+                            const boxX = midX - boxWidth / 2;
+                            const boxY = midY - boxHeight / 2;
+
+                            ctx.fillStyle = `rgba(255, 250, 242, ${0.5 + depthFactor * 0.35})`;
+                            ctx.strokeStyle = `rgba(122, 59, 29, ${0.25 + depthFactor * 0.25})`;
+                            ctx.lineWidth = 0.8;
+                            ctx.beginPath();
+                            ctx.rect(boxX, boxY, boxWidth, boxHeight);
+                            ctx.fill();
+                            ctx.stroke();
+
+                            ctx.fillStyle = 'rgba(61, 40, 30, 0.9)';
+                            ctx.fillText(label, midX, midY + 1);
+                        });
+                        ctx.restore();
+                    }
+                }
 
                 const sortedNodes = projected.slice().sort((a, b) => a.depth - b.depth);
 
@@ -2343,7 +2569,8 @@
                         ctx.stroke();
                     }
 
-                    const shouldShowLabel = node.id === state.highlightId || state.searchHighlights.has(node.id) || item.perspective > 0.55;
+                    const isHighlighted = node.id === state.highlightId || state.searchHighlights.has(node.id);
+                    const shouldShowLabel = isHighlighted || (state.showLabels && item.perspective > 0.55);
                     if (shouldShowLabel) {
                         ctx.fillStyle = 'rgba(30, 27, 25, 0.85)';
                         ctx.font = `${Math.max(11, Math.min(18, 12 * item.perspective + 2))}px 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
@@ -2419,6 +2646,11 @@
                 resetView,
                 setNodeColorGetter,
                 setLinkColorGetter,
+                setShowLinks,
+                setShowLabels,
+                setShowLinkLabels,
+                setAutoLayoutEnabled,
+                zoomBy,
                 stopAutoRotate,
                 scheduleAutoRotate,
                 destroy() {
@@ -2694,12 +2926,16 @@
                 document.getElementById('zoom-in').addEventListener('click', () => {
                     if (currentView === '2d' && svg) {
                         svg.transition().duration(500).call(zoom.scaleBy, 1.5);
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.zoomBy(1.25);
                     }
                 });
 
                 document.getElementById('zoom-out').addEventListener('click', () => {
                     if (currentView === '2d' && svg) {
                         svg.transition().duration(500).call(zoom.scaleBy, 0.75);
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.zoomBy(0.8);
                     }
                 });
 
@@ -2835,6 +3071,9 @@
                     } else {
                         simulation.alphaTarget(0.001);
                     }
+                    if (graph3DRenderer) {
+                        graph3DRenderer.setAutoLayoutEnabled(this.checked);
+                    }
                 });
 
                 document.querySelectorAll('input[name="graph-view"]').forEach(radio => {
@@ -2928,6 +3167,12 @@
                     const targetVisible = targetType ? selectedDomains.includes(targetType) : false;
                     return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
                 });
+            }
+
+            if (graph3DRenderer) {
+                graph3DRenderer.setShowLinks(showLinks);
+                graph3DRenderer.setShowLabels(showLabels);
+                graph3DRenderer.setShowLinkLabels(showLinkLabels);
             }
 
             update3DGraphData();
@@ -3114,6 +3359,16 @@
                 });
             }
 
+            const showLinks = document.getElementById('show-links') ? document.getElementById('show-links').checked : true;
+            const showLabels = document.getElementById('show-labels') ? document.getElementById('show-labels').checked : true;
+            const showLinkLabels = document.getElementById('show-link-labels') ? document.getElementById('show-link-labels').checked : false;
+            const autoLayoutEnabled = document.getElementById('auto-layout') ? document.getElementById('auto-layout').checked : true;
+
+            graph3DRenderer.setShowLinks(showLinks);
+            graph3DRenderer.setShowLabels(showLabels);
+            graph3DRenderer.setShowLinkLabels(showLinkLabels);
+            graph3DRenderer.setAutoLayoutEnabled(autoLayoutEnabled);
+
             const { width, height } = getGraphContainerSize();
             graph3DRenderer.resize(width, height);
             update3DGraphData();
@@ -3159,9 +3414,26 @@
                     type: link.type
                 }));
 
+            const showLinksControl = document.getElementById('show-links');
+            const showLabelsControl = document.getElementById('show-labels');
+            const showLinkLabelsControl = document.getElementById('show-link-labels');
+            const autoLayoutControl = document.getElementById('auto-layout');
+
             graph3DRenderer.setData(filteredNodes, filteredLinks);
             graph3DRenderer.setNodeColorGetter(get3DNodeColor);
             graph3DRenderer.setLinkColorGetter(link => relationColorMap[link.type] || '#999');
+            if (showLinksControl) {
+                graph3DRenderer.setShowLinks(showLinksControl.checked);
+            }
+            if (showLabelsControl) {
+                graph3DRenderer.setShowLabels(showLabelsControl.checked);
+            }
+            if (showLinkLabelsControl) {
+                graph3DRenderer.setShowLinkLabels(showLinkLabelsControl.checked);
+            }
+            if (autoLayoutControl) {
+                graph3DRenderer.setAutoLayoutEnabled(autoLayoutControl.checked);
+            }
 
             const highlightId = currentNode && allowedNodeIds.has(currentNode.id) ? currentNode.id : null;
             graph3DRenderer.setCurrentNode(highlightId);
