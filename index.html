@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>红楼梦人物关系知识图谱</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -79,10 +79,58 @@
             border: 1px solid rgba(150, 90, 60, 0.15);
             position: relative;
         }
+
+        .graph-error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 250, 242, 0.98);
+            border-radius: 12px;
+            padding: 18px 28px;
+            box-shadow: 0 10px 30px rgba(67, 48, 37, 0.25);
+            border: 1px solid rgba(150, 90, 60, 0.2);
+            color: #7a3b1d;
+            max-width: 80%;
+            line-height: 1.6;
+            font-size: 16px;
+            text-align: center;
+            z-index: 500;
+        }
         
         #knowledge-graph {
             width: 100%;
             height: 100%;
+        }
+
+        #graph-3d {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+
+        #graph-3d canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .graph-3d-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(31, 26, 24, 0.75);
+            color: #f8f2e8;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+            display: none;
+            z-index: 450;
         }
         
         .search-box {
@@ -482,6 +530,14 @@
                         <label><input type="checkbox" id="auto-layout" checked> 自动布局</label>
                     </div>
                 </div>
+
+                <div class="control-section">
+                    <h3>视图模式</h3>
+                    <div class="filter-options" id="view-switcher">
+                        <label><input type="radio" name="graph-view" value="2d" checked> 二维布局</label>
+                        <label><input type="radio" name="graph-view" value="3d"> 三维布局</label>
+                    </div>
+                </div>
                 
                 <div class="control-section">
                     <h3>节点图例</h3>
@@ -535,6 +591,8 @@
             
             <div class="graph-container">
                 <svg id="knowledge-graph"></svg>
+                <div id="graph-3d"></div>
+                <div class="graph-3d-hint" id="graph-3d-hint">按住拖拽旋转 · 滚轮缩放 · 点击节点查看详情</div>
                 <div class="toolbar">
                     <button id="zoom-in"><i class="fas fa-search-plus"></i></button>
                     <button id="zoom-out"><i class="fas fa-search-minus"></i></button>
@@ -993,6 +1051,31 @@
                 {source: 60, target: 78, relation: "朋友", type: "朋友"}
             ]
         };
+
+        const relationAliasMap = {
+            "父": "父亲",
+            "母": "母亲",
+            "丫头": "侍女",
+            "丫环": "侍女",
+            "大丫头": "首席侍女",
+            "大丫环": "首席侍女",
+            "好友": "朋友",
+            "好朋友": "朋友",
+            "好兄弟": "朋友"
+        };
+
+        function normalizeRelationData(graph) {
+            graph.links.forEach(link => {
+                if (relationAliasMap[link.type]) {
+                    link.type = relationAliasMap[link.type];
+                }
+                if (relationAliasMap[link.relation]) {
+                    link.relation = relationAliasMap[link.relation];
+                }
+            });
+        }
+
+        normalizeRelationData(graphData);
 
         const characterProfiles = {
             "红楼梦人物关系图谱": {
@@ -1800,6 +1883,9 @@
             }
         });
 
+        const rawGraphData = JSON.parse(JSON.stringify(graphData));
+        const rawNodeMap = new Map(rawGraphData.nodes.map(node => [node.id, node]));
+
         // 颜色映射
         const colorMap = {
             "root": "#d62828",      // 红色 - 总览节点
@@ -1837,8 +1923,8 @@
             "丈夫": "#264653",
             "妻": "#e9c46a",
             "妾": "#f4a261",
-            "丫环": "#8ecae6",
-            "丫头": "#8ecae6",
+            "侍女": "#8ecae6",
+            "首席侍女": "#74c69d",
             "小厮": "#4a4e69",
             "乳母": "#b07d62",
             "老奴": "#6c757d",
@@ -1872,14 +1958,9 @@
             "外甥女": "#ffc8dd",
             "陪房": "#6f4d7c",
             "陪房丫头": "#6f4d7c",
-            "大丫头": "#74c69d",
-            "大丫环": "#74c69d",
             "二房": "#c77dff",
             "夫妻": "#ff8500",
             "朋友": "#6d597a",
-            "好友": "#6d597a",
-            "好朋友": "#6d597a",
-            "好兄弟": "#6d597a",
             "老师": "#277da1",
             "女婿": "#bc4749",
             "岳母": "#f94144",
@@ -1953,6 +2034,932 @@
             };
         }
 
+        function create3DRenderer(container, options = {}) {
+            const canvas = document.createElement('canvas');
+            canvas.id = 'graph-3d-canvas';
+            container.innerHTML = '';
+            container.appendChild(canvas);
+
+            const ctx = canvas.getContext('2d');
+            const defaultRotationX = -0.35;
+            const defaultRotationY = 0.55;
+            const baseLayoutConfig = {
+                repulsionStrength: 2400,
+                linkDistance: 160,
+                linkStrength: 0.015,
+                centeringStrength: 0.0045,
+                layeringStrength: 0.018,
+                damping: 0.86
+            };
+            const depthMap = options.layerDepthMap || {
+                root: -40,
+                family: -140,
+                ning: -240,
+                rong: -320,
+                wang: -400,
+                lin: -480,
+                shi: -560,
+                xue: -640,
+                other: -720
+            };
+
+            const state = {
+                width: container.clientWidth || 800,
+                height: container.clientHeight || 600,
+                nodes: [],
+                links: [],
+                projectedNodes: [],
+                basePositions: new Map(),
+                nodeLookup: new Map(),
+                rotationX: defaultRotationX,
+                rotationY: defaultRotationY,
+                targetRotationX: defaultRotationX,
+                targetRotationY: defaultRotationY,
+                scale: 0.9,
+                targetScale: 0.9,
+                cameraDistance: 900,
+                pivotX: 0,
+                pivotY: 0,
+                pivotZ: 0,
+                targetPivotX: 0,
+                targetPivotY: 0,
+                targetPivotZ: 0,
+                defaultPivotX: 0,
+                defaultPivotY: 0,
+                defaultPivotZ: 0,
+                offsetX: 0,
+                offsetY: 0,
+                targetOffsetX: 0,
+                targetOffsetY: 0,
+                highlightId: null,
+                searchHighlights: new Set(),
+                autoRotate: true,
+                autoRotateSpeed: 0.0008,
+                needsRedraw: true,
+                showLinks: true,
+                showLabels: true,
+                showLinkLabels: false,
+                autoLayoutEnabled: true,
+                layoutConfig: {
+                    ...baseLayoutConfig,
+                    ...(options.layoutConfig || {})
+                },
+                pointerActive: false,
+                pointerMoved: false,
+                pointerMode: 'rotate',
+                pointerLastX: 0,
+                pointerLastY: 0,
+                onNodeClick: options.onNodeClick || (() => {}),
+                getNodeColor: options.getNodeColor || (() => '#adb5bd'),
+                getLinkColor: options.getLinkColor || (() => '#999'),
+                getNodeLabel: options.getNodeLabel || (node => node.name),
+                autoRotateDelay: options.autoRotateDelay || 7000,
+                autoRotateTimer: null,
+                animationFrameId: null
+            };
+
+            function resize(width, height) {
+                state.width = Math.max(width, 200);
+                state.height = Math.max(height, 200);
+                const ratio = window.devicePixelRatio || 1;
+                canvas.width = state.width * ratio;
+                canvas.height = state.height * ratio;
+                canvas.style.width = `${state.width}px`;
+                canvas.style.height = `${state.height}px`;
+                if (ctx.resetTransform) {
+                    ctx.resetTransform();
+                } else {
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                }
+                ctx.scale(ratio, ratio);
+                state.needsRedraw = true;
+            }
+
+            function scheduleAutoRotate() {
+                if (state.autoRotateTimer) {
+                    clearTimeout(state.autoRotateTimer);
+                }
+                state.autoRotateTimer = setTimeout(() => {
+                    state.autoRotate = true;
+                }, state.autoRotateDelay);
+            }
+
+            function ensureBasePosition(node) {
+                if (state.basePositions.has(node.id)) {
+                    return state.basePositions.get(node.id);
+                }
+
+                const cached = lastNodePositions[node.id];
+                const fallbackX = (Math.random() - 0.5) * 700;
+                const fallbackY = (Math.random() - 0.5) * 700;
+                const depth = depthMap[node.type] !== undefined ? depthMap[node.type] : -680;
+                const basePosition = {
+                    x: (cached ? cached.x : fallbackX) * 1.05,
+                    y: (cached ? cached.y : fallbackY) * 1.05,
+                    z: depth + (Math.random() - 0.5) * 70
+                };
+
+                state.basePositions.set(node.id, basePosition);
+                return basePosition;
+            }
+
+            function setData(nodes, links) {
+                state.nodeLookup.clear();
+                state.nodes = nodes.map(node => {
+                    const base = ensureBasePosition(node);
+                    const positioned = {
+                        ...node,
+                        baseX: base.x,
+                        baseY: base.y,
+                        baseZ: base.z,
+                        x: base.x,
+                        y: base.y,
+                        z: base.z,
+                        vx: 0,
+                        vy: 0,
+                        vz: 0,
+                        fx: 0,
+                        fy: 0,
+                        fz: 0
+                    };
+                    state.nodeLookup.set(node.id, positioned);
+                    return positioned;
+                });
+
+                state.links = [];
+                links.forEach(link => {
+                    const sourceId = link.source;
+                    const targetId = link.target;
+                    if (!state.nodeLookup.has(sourceId) || !state.nodeLookup.has(targetId)) {
+                        return;
+                    }
+                    state.links.push({
+                        source: sourceId,
+                        target: targetId,
+                        type: link.type,
+                        relation: link.relation || link.type
+                    });
+                });
+
+                let sumX = 0;
+                let sumY = 0;
+                let sumZ = 0;
+                const count = state.nodes.length;
+                if (count > 0) {
+                    state.nodes.forEach(node => {
+                        sumX += node.x;
+                        sumY += node.y;
+                        sumZ += node.z;
+                    });
+                    state.defaultPivotX = sumX / count;
+                    state.defaultPivotY = sumY / count;
+                    state.defaultPivotZ = sumZ / count;
+                } else {
+                    state.defaultPivotX = 0;
+                    state.defaultPivotY = 0;
+                    state.defaultPivotZ = 0;
+                }
+
+                if (state.highlightId != null && state.nodeLookup.has(state.highlightId)) {
+                    const focus = state.nodeLookup.get(state.highlightId);
+                    state.targetPivotX = focus.x;
+                    state.targetPivotY = focus.y;
+                    state.targetPivotZ = focus.z;
+                } else {
+                    state.targetPivotX = state.defaultPivotX;
+                    state.targetPivotY = state.defaultPivotY;
+                    state.targetPivotZ = state.defaultPivotZ;
+                }
+                state.pivotX = state.targetPivotX;
+                state.pivotY = state.targetPivotY;
+                state.pivotZ = state.targetPivotZ;
+
+                state.projectedNodes = [];
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
+            function setCurrentNode(nodeId) {
+                state.highlightId = nodeId;
+                if (nodeId != null && state.nodeLookup.has(nodeId)) {
+                    const node = state.nodeLookup.get(nodeId);
+                    state.targetPivotX = node.x;
+                    state.targetPivotY = node.y;
+                    state.targetPivotZ = node.z;
+                    state.targetOffsetX = 0;
+                    state.targetOffsetY = 0;
+                    state.targetScale = Math.max(state.targetScale, 1.15);
+                } else {
+                    state.targetPivotX = state.defaultPivotX;
+                    state.targetPivotY = state.defaultPivotY;
+                    state.targetPivotZ = state.defaultPivotZ;
+                    state.targetOffsetX = 0;
+                    state.targetOffsetY = 0;
+                }
+                state.needsRedraw = true;
+            }
+
+            function setSearchHighlights(highlights) {
+                state.searchHighlights = new Set(highlights || []);
+                state.needsRedraw = true;
+            }
+
+            function refreshStyles() {
+                state.needsRedraw = true;
+            }
+
+            function focusNode(nodeId) {
+                const node = state.nodeLookup.get(nodeId);
+                if (!node) return;
+
+                state.targetPivotX = node.x;
+                state.targetPivotY = node.y;
+                state.targetPivotZ = node.z;
+
+                const dx = node.x - state.defaultPivotX;
+                const dy = node.y - state.defaultPivotY;
+                const dz = node.z - state.defaultPivotZ;
+                const depth = dz === 0 ? -1 : -dz;
+                const angleY = Math.atan2(dx, depth);
+                const angleX = Math.atan2(dy, depth);
+
+                state.targetRotationY = angleY;
+                state.targetRotationX = -angleX;
+                state.targetScale = Math.max(state.targetScale, 1.6);
+                state.targetOffsetX = 0;
+                state.targetOffsetY = 0;
+                state.highlightId = nodeId;
+                state.autoRotate = false;
+                scheduleAutoRotate();
+                state.needsRedraw = true;
+            }
+
+            function resetView() {
+                state.targetRotationX = defaultRotationX;
+                state.targetRotationY = defaultRotationY;
+                state.targetScale = 0.9;
+                state.targetOffsetX = 0;
+                state.targetOffsetY = 0;
+                state.offsetX = 0;
+                state.offsetY = 0;
+                state.targetPivotX = state.defaultPivotX;
+                state.targetPivotY = state.defaultPivotY;
+                state.targetPivotZ = state.defaultPivotZ;
+                state.autoRotate = true;
+                scheduleAutoRotate();
+                state.needsRedraw = true;
+            }
+
+            function stopAutoRotate() {
+                state.autoRotate = false;
+                if (state.autoRotateTimer) {
+                    clearTimeout(state.autoRotateTimer);
+                }
+            }
+
+            function setNodeColorGetter(fn) {
+                if (typeof fn === 'function') {
+                    state.getNodeColor = fn;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setLinkColorGetter(fn) {
+                if (typeof fn === 'function') {
+                    state.getLinkColor = fn;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setShowLinks(show) {
+                const value = Boolean(show);
+                if (state.showLinks !== value) {
+                    state.showLinks = value;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setShowLabels(show) {
+                const value = Boolean(show);
+                if (state.showLabels !== value) {
+                    state.showLabels = value;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setShowLinkLabels(show) {
+                const value = Boolean(show);
+                if (state.showLinkLabels !== value) {
+                    state.showLinkLabels = value;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setAutoLayoutEnabled(enabled) {
+                const value = Boolean(enabled);
+                if (state.autoLayoutEnabled === value) {
+                    return;
+                }
+
+                state.autoLayoutEnabled = value;
+                state.nodes.forEach(node => {
+                    node.vx = 0;
+                    node.vy = 0;
+                    node.vz = 0;
+                });
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
+            function zoomBy(factor) {
+                if (typeof factor !== 'number' || !isFinite(factor)) {
+                    return;
+                }
+                stopAutoRotate();
+                state.targetScale = Math.min(2.5, Math.max(0.35, state.targetScale * factor));
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
+            function handleClick(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+
+                let closest = null;
+                let closestDistance = Infinity;
+
+                state.projectedNodes.forEach(item => {
+                    const dx = item.x - x;
+                    const dy = item.y - y;
+                    const distance = Math.hypot(dx, dy);
+                    if (distance < closestDistance && distance <= item.radius + 8) {
+                        closest = item;
+                        closestDistance = distance;
+                    }
+                });
+
+                if (closest) {
+                    state.onNodeClick(closest.node);
+                }
+            }
+
+            function stepAutoLayout() {
+                if (!state.autoLayoutEnabled || state.nodes.length === 0) {
+                    return false;
+                }
+
+                const {
+                    repulsionStrength,
+                    linkDistance,
+                    linkStrength,
+                    centeringStrength,
+                    layeringStrength,
+                    damping
+                } = state.layoutConfig;
+
+                const nodes = state.nodes;
+                const nodeCount = nodes.length;
+
+                for (let i = 0; i < nodeCount; i++) {
+                    const node = nodes[i];
+                    node.fx = 0;
+                    node.fy = 0;
+                    node.fz = 0;
+                }
+
+                for (let i = 0; i < nodeCount; i++) {
+                    const nodeA = nodes[i];
+                    for (let j = i + 1; j < nodeCount; j++) {
+                        const nodeB = nodes[j];
+                        let dx = nodeA.x - nodeB.x;
+                        let dy = nodeA.y - nodeB.y;
+                        let dz = nodeA.z - nodeB.z;
+                        const distanceSq = dx * dx + dy * dy + dz * dz + 0.01;
+                        const force = repulsionStrength / distanceSq;
+                        const distance = Math.sqrt(distanceSq);
+                        dx /= distance;
+                        dy /= distance;
+                        dz /= distance;
+                        nodeA.fx += dx * force;
+                        nodeA.fy += dy * force;
+                        nodeA.fz += dz * force;
+                        nodeB.fx -= dx * force;
+                        nodeB.fy -= dy * force;
+                        nodeB.fz -= dz * force;
+                    }
+                }
+
+                state.links.forEach(link => {
+                    const source = state.nodeLookup.get(link.source);
+                    const target = state.nodeLookup.get(link.target);
+                    if (!source || !target) return;
+                    let dx = target.x - source.x;
+                    let dy = target.y - source.y;
+                    let dz = target.z - source.z;
+                    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.0001;
+                    const delta = distance - linkDistance;
+                    const force = delta * linkStrength;
+                    dx /= distance;
+                    dy /= distance;
+                    dz /= distance;
+                    source.fx += dx * force;
+                    source.fy += dy * force;
+                    source.fz += dz * force;
+                    target.fx -= dx * force;
+                    target.fy -= dy * force;
+                    target.fz -= dz * force;
+                });
+
+                let moved = false;
+                for (let i = 0; i < nodeCount; i++) {
+                    const node = nodes[i];
+                    node.fx += -node.x * centeringStrength;
+                    node.fy += -node.y * centeringStrength;
+                    node.fz += (node.baseZ - node.z) * layeringStrength;
+
+                    node.vx = (node.vx + node.fx) * damping;
+                    node.vy = (node.vy + node.fy) * damping;
+                    node.vz = (node.vz + node.fz) * damping;
+
+                    const speedSq = node.vx * node.vx + node.vy * node.vy + node.vz * node.vz;
+                    if (speedSq > 0.00005) {
+                        moved = true;
+                    }
+
+                    node.x += node.vx;
+                    node.y += node.vy;
+                    node.z += node.vz;
+
+                    state.basePositions.set(node.id, { x: node.x, y: node.y, z: node.z });
+                }
+
+                return moved;
+            }
+
+            function renderFrame() {
+                state.animationFrameId = requestAnimationFrame(renderFrame);
+
+                if (state.autoRotate) {
+                    state.rotationY += state.autoRotateSpeed;
+                    state.targetRotationY = state.rotationY;
+                } else {
+                    state.rotationY += (state.targetRotationY - state.rotationY) * 0.08;
+                }
+                state.rotationX += (state.targetRotationX - state.rotationX) * 0.08;
+                state.scale += (state.targetScale - state.scale) * 0.08;
+                state.offsetX += (state.targetOffsetX - state.offsetX) * 0.12;
+                state.offsetY += (state.targetOffsetY - state.offsetY) * 0.12;
+
+                const layoutChanged = stepAutoLayout();
+
+                if (state.highlightId != null && state.nodeLookup.has(state.highlightId)) {
+                    const focus = state.nodeLookup.get(state.highlightId);
+                    state.targetPivotX = focus.x;
+                    state.targetPivotY = focus.y;
+                    state.targetPivotZ = focus.z;
+                } else if (state.nodes.length > 0) {
+                    let sumX = 0;
+                    let sumY = 0;
+                    let sumZ = 0;
+                    const count = state.nodes.length;
+                    for (let i = 0; i < count; i++) {
+                        const node = state.nodes[i];
+                        sumX += node.x;
+                        sumY += node.y;
+                        sumZ += node.z;
+                    }
+                    state.defaultPivotX = sumX / count;
+                    state.defaultPivotY = sumY / count;
+                    state.defaultPivotZ = sumZ / count;
+                    state.targetPivotX = state.defaultPivotX;
+                    state.targetPivotY = state.defaultPivotY;
+                    state.targetPivotZ = state.defaultPivotZ;
+                }
+
+                state.pivotX += (state.targetPivotX - state.pivotX) * 0.12;
+                state.pivotY += (state.targetPivotY - state.pivotY) * 0.12;
+                state.pivotZ += (state.targetPivotZ - state.pivotZ) * 0.12;
+
+                if (!state.needsRedraw && !layoutChanged &&
+                    Math.abs(state.rotationX - state.targetRotationX) < 0.0005 &&
+                    Math.abs(state.rotationY - state.targetRotationY) < 0.0005 &&
+                    Math.abs(state.scale - state.targetScale) < 0.0005 &&
+                    Math.abs(state.offsetX - state.targetOffsetX) < 0.3 &&
+                    Math.abs(state.offsetY - state.targetOffsetY) < 0.3 &&
+                    Math.abs(state.pivotX - state.targetPivotX) < 0.4 &&
+                    Math.abs(state.pivotY - state.targetPivotY) < 0.4 &&
+                    Math.abs(state.pivotZ - state.targetPivotZ) < 0.4) {
+                    return;
+                }
+
+                state.needsRedraw = false;
+
+                ctx.clearRect(0, 0, state.width, state.height);
+
+                const cosY = Math.cos(state.rotationY);
+                const sinY = Math.sin(state.rotationY);
+                const cosX = Math.cos(state.rotationX);
+                const sinX = Math.sin(state.rotationX);
+                const widthHalf = state.width / 2;
+                const heightHalf = state.height / 2;
+
+                const projected = [];
+
+                const pivotX = state.pivotX;
+                const pivotY = state.pivotY;
+                const pivotZ = state.pivotZ;
+
+                state.nodes.forEach(node => {
+                    const relX = node.x - pivotX;
+                    const relY = node.y - pivotY;
+                    const relZ = node.z - pivotZ;
+
+                    let x1 = relX * cosY - relZ * sinY;
+                    let z1 = relX * sinY + relZ * cosY;
+                    let y1 = relY * cosX - z1 * sinX;
+                    z1 = relY * sinX + z1 * cosX;
+
+                    const denom = state.cameraDistance - z1;
+                    if (denom < 30) {
+                        return;
+                    }
+
+                    const perspective = state.cameraDistance / denom;
+                    const screenScale = state.scale * perspective * 0.7;
+                    const screenX = x1 * screenScale + widthHalf + state.offsetX;
+                    const screenY = y1 * screenScale + heightHalf + state.offsetY;
+                    const baseRadius = Math.max(3.2, 6 * screenScale);
+                    const radius = baseRadius * (node.id === state.highlightId ? 1.5 : (state.searchHighlights.has(node.id) ? 1.25 : 1));
+
+                    projected.push({
+                        node,
+                        x: screenX,
+                        y: screenY,
+                        radius,
+                        depth: z1,
+                        perspective
+                    });
+                });
+
+                state.projectedNodes = projected;
+
+                const projectedMap = new Map(projected.map(item => [item.node.id, item]));
+
+                if (state.showLinks || state.showLinkLabels) {
+                    const linkOpacity = state.showLinks ? 0.65 : 0;
+                    if (state.showLinks) {
+                        ctx.save();
+                        ctx.globalAlpha = linkOpacity;
+                        state.links.forEach(link => {
+                            const source = projectedMap.get(link.source);
+                            const target = projectedMap.get(link.target);
+                            if (!source || !target) return;
+                            ctx.strokeStyle = state.getLinkColor(link);
+                            ctx.lineWidth = Math.max(0.6, 1.1 * Math.min(source.perspective, target.perspective));
+                            ctx.beginPath();
+                            ctx.moveTo(source.x, source.y);
+                            ctx.lineTo(target.x, target.y);
+                            ctx.stroke();
+                        });
+                        ctx.restore();
+                    }
+
+                    if (state.showLinkLabels) {
+                        ctx.save();
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        const labelOffsetMap = new Map();
+                        const labelPlacements = [];
+                        state.links.forEach(link => {
+                            const source = projectedMap.get(link.source);
+                            const target = projectedMap.get(link.target);
+                            if (!source || !target) return;
+                            const baseMidX = (source.x + target.x) / 2;
+                            const baseMidY = (source.y + target.y) / 2;
+                            const depthFactor = Math.min(source.perspective, target.perspective);
+                            const label = link.relation || link.type || '';
+                            if (!label) return;
+
+                            const fontSize = Math.max(11, Math.min(16, 11 + depthFactor * 3));
+                            ctx.font = `600 ${fontSize}px 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+                            const textMetrics = ctx.measureText(label);
+                            const labelWidth = Math.max(fontSize, textMetrics.width + 6);
+                            const labelHeight = fontSize * 1.35;
+
+                            const dx = target.x - source.x;
+                            const dy = target.y - source.y;
+                            const length = Math.hypot(dx, dy);
+                            let normalX = 0;
+                            let normalY = 1;
+                            if (length > 0.0001) {
+                                normalX = -dy / length;
+                                normalY = dx / length;
+                            }
+
+                            const pairKey = source.node.id < target.node.id
+                                ? `${source.node.id}-${target.node.id}`
+                                : `${target.node.id}-${source.node.id}`;
+                            const currentCount = (labelOffsetMap.get(pairKey) || 0) + 1;
+                            labelOffsetMap.set(pairKey, currentCount);
+
+                            const offsetBase = fontSize * 0.6 + 6;
+                            let offsetX = 0;
+                            let offsetY = 0;
+                            if (currentCount === 1) {
+                                offsetX = normalX * offsetBase * 0.6;
+                                offsetY = normalY * offsetBase * 0.6;
+                            } else {
+                                const direction = currentCount % 2 === 0 ? 1 : -1;
+                                const offsetLevel = Math.floor((currentCount - 1) / 2) + 1;
+                                const distance = offsetBase * offsetLevel;
+                                offsetX = normalX * distance * direction;
+                                offsetY = normalY * distance * direction;
+                            }
+
+                            let labelX = baseMidX + offsetX;
+                            let labelY = baseMidY + offsetY;
+
+                            const stepDistance = Math.max(10, fontSize * 0.75);
+                            const maxAttempts = 6;
+                            let attempt = 0;
+                            let placed = false;
+
+                            while (attempt <= maxAttempts && !placed) {
+                                const halfWidth = labelWidth / 2;
+                                const halfHeight = labelHeight / 2;
+                                const bounds = {
+                                    left: labelX - halfWidth,
+                                    right: labelX + halfWidth,
+                                    top: labelY - halfHeight,
+                                    bottom: labelY + halfHeight
+                                };
+
+                                let overlaps = false;
+                                for (let i = 0; i < labelPlacements.length; i++) {
+                                    const other = labelPlacements[i];
+                                    if (bounds.left < other.right && bounds.right > other.left &&
+                                        bounds.top < other.bottom && bounds.bottom > other.top) {
+                                        overlaps = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!overlaps) {
+                                    labelPlacements.push(bounds);
+                                    placed = true;
+                                    break;
+                                }
+
+                                const attemptDirection = attempt % 2 === 0 ? 1 : -1;
+                                labelX += normalX * stepDistance * attemptDirection;
+                                labelY += normalY * stepDistance * attemptDirection;
+                                attempt++;
+                            }
+
+                            ctx.lineWidth = Math.max(2, 2.6 - depthFactor);
+                            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                            ctx.fillStyle = '#3a3a3a';
+                            ctx.strokeText(label, labelX, labelY);
+                            ctx.fillText(label, labelX, labelY);
+                        });
+                        ctx.restore();
+                    }
+                }
+
+                const sortedNodes = projected.slice().sort((a, b) => a.depth - b.depth);
+
+                sortedNodes.forEach(item => {
+                    const { node } = item;
+                    ctx.beginPath();
+                    ctx.fillStyle = state.getNodeColor(node);
+                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    if (node.id === state.highlightId) {
+                        ctx.lineWidth = 2.5;
+                        ctx.strokeStyle = '#ffcc00';
+                        ctx.stroke();
+                    } else if (state.searchHighlights.has(node.id)) {
+                        ctx.lineWidth = 1.6;
+                        ctx.strokeStyle = '#ff8c00';
+                        ctx.stroke();
+                    } else {
+                        ctx.lineWidth = 0.8;
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+                        ctx.stroke();
+                    }
+
+                    const isHighlighted = node.id === state.highlightId;
+                    const isSearchMatch = state.searchHighlights.has(node.id);
+                    const shouldShowLabel = isHighlighted || isSearchMatch || (state.showLabels && item.perspective > 0.55);
+                    if (shouldShowLabel) {
+                        ctx.save();
+                        const baseFontSize = node.id === 0 ? 14 : 12;
+                        const perspectiveScale = Math.min(1.45, Math.max(0.85, item.perspective));
+                        const fontSize = Math.round(baseFontSize * (isHighlighted ? 1.2 : 1) * perspectiveScale);
+                        const fontWeight = isHighlighted ? '700' : '500';
+                        ctx.font = `${fontWeight} ${fontSize}px 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+                        ctx.shadowBlur = 3;
+                        ctx.shadowOffsetX = 0;
+                        ctx.shadowOffsetY = 1;
+                        if (isHighlighted) {
+                            ctx.fillStyle = '#d9534f';
+                        } else if (isSearchMatch) {
+                            ctx.fillStyle = '#b85c38';
+                        } else {
+                            ctx.fillStyle = 'rgba(67, 48, 37, 0.95)';
+                        }
+                        ctx.fillText(state.getNodeLabel(node), item.x, item.y - item.radius - 6);
+                        ctx.restore();
+                    }
+                });
+            }
+
+            function handlePointerDown(event) {
+                stopAutoRotate();
+                state.pointerActive = true;
+                state.pointerMoved = false;
+                const isPanGesture = event.button === 1 || event.button === 2 || event.ctrlKey || event.metaKey || event.shiftKey;
+                state.pointerMode = isPanGesture ? 'pan' : 'rotate';
+                if (state.pointerMode === 'pan' && state.highlightId != null) {
+                    state.pointerMode = 'rotate';
+                }
+                state.pointerLastX = event.clientX;
+                state.pointerLastY = event.clientY;
+                if (isPanGesture) {
+                    event.preventDefault();
+                }
+                canvas.style.cursor = state.pointerMode === 'pan' ? 'move' : 'grabbing';
+                if (canvas.setPointerCapture) {
+                    canvas.setPointerCapture(event.pointerId);
+                }
+            }
+
+            function handlePointerMove(event) {
+                if (!state.pointerActive) return;
+                const dx = event.clientX - state.pointerLastX;
+                const dy = event.clientY - state.pointerLastY;
+                if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                    state.pointerMoved = true;
+                }
+
+                if (state.pointerMode === 'pan') {
+                    state.offsetX += dx;
+                    state.offsetY += dy;
+                    state.targetOffsetX = state.offsetX;
+                    state.targetOffsetY = state.offsetY;
+                } else {
+                    state.rotationY += dx * 0.005;
+                    state.rotationX += dy * 0.005;
+                    state.rotationX = Math.max(-1.2, Math.min(1.2, state.rotationX));
+                    state.targetRotationY = state.rotationY;
+                    state.targetRotationX = state.rotationX;
+                }
+
+                state.pointerLastX = event.clientX;
+                state.pointerLastY = event.clientY;
+                state.needsRedraw = true;
+            }
+
+            function handlePointerUp(event) {
+                if (!state.pointerActive) return;
+                if (canvas.hasPointerCapture && canvas.hasPointerCapture(event.pointerId)) {
+                    canvas.releasePointerCapture(event.pointerId);
+                }
+                state.pointerActive = false;
+                const wasRotate = state.pointerMode === 'rotate';
+                const isPointerUpEvent = event.type === 'pointerup';
+                state.pointerMode = 'rotate';
+                canvas.style.cursor = 'grab';
+                scheduleAutoRotate();
+                if (isPointerUpEvent && wasRotate && !state.pointerMoved) {
+                    handleClick(event);
+                }
+                state.pointerMoved = false;
+            }
+
+            function handleWheel(event) {
+                event.preventDefault();
+                stopAutoRotate();
+                const scaleFactor = event.deltaY > 0 ? 0.9 : 1.1;
+                state.targetScale = Math.min(2.2, Math.max(0.45, state.targetScale * scaleFactor));
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
+            canvas.addEventListener('pointerdown', handlePointerDown);
+            canvas.addEventListener('pointermove', handlePointerMove);
+            canvas.addEventListener('pointerup', handlePointerUp);
+            canvas.addEventListener('pointercancel', handlePointerUp);
+            canvas.addEventListener('pointerleave', handlePointerUp);
+            canvas.addEventListener('contextmenu', event => event.preventDefault());
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+            canvas.style.cursor = 'grab';
+
+            resize(state.width, state.height);
+            scheduleAutoRotate();
+            renderFrame();
+
+            return {
+                resize,
+                setData,
+                setCurrentNode,
+                setSearchHighlights,
+                refreshStyles,
+                focusNode,
+                resetView,
+                setNodeColorGetter,
+                setLinkColorGetter,
+                setShowLinks,
+                setShowLabels,
+                setShowLinkLabels,
+                setAutoLayoutEnabled,
+                zoomBy,
+                stopAutoRotate,
+                scheduleAutoRotate,
+                destroy() {
+                    if (state.animationFrameId) {
+                        cancelAnimationFrame(state.animationFrameId);
+                    }
+                    if (state.autoRotateTimer) {
+                        clearTimeout(state.autoRotateTimer);
+                    }
+                }
+            };
+        }
+
+        function showGraphError(message) {
+            const container = document.querySelector('.graph-container');
+            if (!container) return;
+            let errorNode = container.querySelector('.graph-error');
+            if (!errorNode) {
+                errorNode = document.createElement('div');
+                errorNode.className = 'graph-error';
+                container.appendChild(errorNode);
+            }
+            errorNode.textContent = message;
+        }
+
+        function clearGraphError() {
+            const container = document.querySelector('.graph-container');
+            if (!container) return;
+            const errorNode = container.querySelector('.graph-error');
+            if (errorNode) {
+                errorNode.remove();
+            }
+        }
+
+        function show3DHintOverlay() {
+            const hint = document.getElementById('graph-3d-hint');
+            if (!hint) return;
+            hint.style.display = 'block';
+            if (graph3DHintTimer) {
+                clearTimeout(graph3DHintTimer);
+            }
+            graph3DHintTimer = setTimeout(() => {
+                hint.style.display = 'none';
+                graph3DHintTimer = null;
+            }, 5000);
+        }
+
+        function hide3DHintOverlay() {
+            const hint = document.getElementById('graph-3d-hint');
+            if (!hint) return;
+            hint.style.display = 'none';
+            if (graph3DHintTimer) {
+                clearTimeout(graph3DHintTimer);
+                graph3DHintTimer = null;
+            }
+        }
+
+        function getNodeId(nodeRef) {
+            return typeof nodeRef === 'object' ? nodeRef.id : nodeRef;
+        }
+
+        function getNodeData(nodeRef) {
+            const id = getNodeId(nodeRef);
+            return graphData.nodes.find(node => node.id === id) || rawNodeMap.get(id);
+        }
+
+        function getNodeType(nodeRef) {
+            const nodeData = getNodeData(nodeRef);
+            return nodeData ? nodeData.type : null;
+        }
+
+        function get3DNodeColor(node) {
+            if (currentNode && node.id === currentNode.id) {
+                return '#ffcc00';
+            }
+            if (searchHighlightIds.has(node.id)) {
+                return '#ff8c00';
+            }
+            return colorMap[node.type] || '#adb5bd';
+        }
+
         // 类型名称映射
         const typeNames = {
             "root": "总览节点",
@@ -1967,26 +2974,108 @@
         };
 
         // 全局变量
-        let simulation, zoom, g, node, link, text, linkLabels;
+        let simulation, zoom, g, node, link, text, linkLabels, svg;
+        let autoLayoutEnabled2D = true;
         let currentTransform = d3.zoomIdentity;
         let lastNodePositions = {};
         let currentNode = null;
         let relationTypes = new Set();
+        let graph3DRenderer = null;
+        let controlsInitialized = false;
+        let relationFiltersInitialized = false;
+        let currentView = '2d';
+        let searchHighlightIds = new Set();
+        let activeDomains = Array.from(new Set(rawGraphData.nodes.map(node => node.type)));
+        let activeRelations = Array.from(new Set(rawGraphData.links.map(link => link.type)));
+        let graph3DHintTimer = null;
+
+        function getGraphContainerSize() {
+            const container = document.querySelector('.graph-container');
+            if (!container) {
+                const fallbackWidth = window.innerWidth || document.documentElement.clientWidth || 1280;
+                const fallbackHeight = window.innerHeight || document.documentElement.clientHeight || 720;
+                return {
+                    width: fallbackWidth,
+                    height: fallbackHeight
+                };
+            }
+
+            const rect = container.getBoundingClientRect();
+            const width = Math.max(rect.width, container.clientWidth, 600);
+            const height = Math.max(rect.height, container.clientHeight, 400);
+
+            return { width, height };
+        }
+
+        function update2DGraphPositions() {
+            if (!link || !node || !text) {
+                return;
+            }
+
+            graphData.nodes.forEach(n => {
+                if (typeof n.x === 'number' && typeof n.y === 'number') {
+                    lastNodePositions[n.id] = { x: n.x, y: n.y };
+                }
+            });
+
+            link
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+
+            if (linkLabels) {
+                linkLabels
+                    .each(function(d) {
+                        const position = calculateLinkLabelPosition(d);
+                        d._labelX = position.x;
+                        d._labelY = position.y;
+                    })
+                    .attr('x', d => d._labelX)
+                    .attr('y', d => d._labelY);
+            }
+
+            node.attr('transform', d => `translate(${d.x},${d.y})`);
+
+            text
+                .attr('x', d => d.x)
+                .attr('y', d => d.y);
+        }
 
         // 初始化图谱
-        function initKnowledgeGraph() {
-            const width = document.getElementById('knowledge-graph').clientWidth;
-            const height = document.getElementById('knowledge-graph').clientHeight;
+        function init2DGraph() {
+            if (currentView !== '2d') {
+                return;
+            }
+            const { width, height } = getGraphContainerSize();
+            const svgElement = document.getElementById('knowledge-graph');
+            if (!svgElement) {
+                return;
+            }
+
+            const autoLayoutControl = document.getElementById('auto-layout');
+            if (autoLayoutControl) {
+                autoLayoutEnabled2D = autoLayoutControl.checked;
+            }
+
+            clearGraphError();
 
             // 清除之前的SVG内容
             d3.select('#knowledge-graph').selectAll('*').remove();
 
             prepareLinkLabelOffsets(graphData.links);
 
+            if (!relationFiltersInitialized) {
+                initRelationFilters();
+                relationFiltersInitialized = true;
+            }
+
             // 创建SVG元素
-            const svg = d3.select('#knowledge-graph')
+            svg = d3.select('#knowledge-graph')
                 .attr('width', width)
-                .attr('height', height);
+                .attr('height', height)
+                .style('width', `${width}px`)
+                .style('height', `${height}px`);
                 
             // 添加缩放和平移支持
             zoom = d3.zoom()
@@ -2069,169 +3158,194 @@
             
             // 更新力导向图 - 确保节点和标签同步移动
             simulation.on('tick', () => {
-                // 保存节点位置
-                graphData.nodes.forEach(n => {
-                    lastNodePositions[n.id] = { x: n.x, y: n.y };
-                });
-                
-                link
-                    .attr('x1', d => d.source.x)
-                    .attr('y1', d => d.source.y)
-                    .attr('x2', d => d.target.x)
-                    .attr('y2', d => d.target.y);
+                update2DGraphPositions();
+            });
 
-                linkLabels
-                    .each(function(d) {
-                        const position = calculateLinkLabelPosition(d);
-                        d._labelX = position.x;
-                        d._labelY = position.y;
-                    })
-                    .attr('x', d => d._labelX)
-                    .attr('y', d => d._labelY);
-                
-                // 所有节点使用transform定位，确保同步移动
-                node
-                    .attr('transform', d => `translate(${d.x},${d.y})`);
-                
-                text
-                    .attr('x', d => d.x)
-                    .attr('y', d => d.y);
-            });
+            if (!autoLayoutEnabled2D) {
+                simulation.alphaTarget(0);
+                simulation.stop();
+                update2DGraphPositions();
+            }
             
-            // 初始化关系类型筛选
-            initRelationFilters();
-            
-            // 工具栏功能
-            document.getElementById('zoom-in').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.scaleBy, 1.5);
-            });
-            
-            document.getElementById('zoom-out').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.scaleBy, 0.75);
-            });
-            
-            document.getElementById('reset-view').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
-                resetNodeStyles();
-            });
-            
-            document.getElementById('center-graph').addEventListener('click', () => {
-                const bounds = document.getElementById('knowledge-graph').getBBox();
-                const parent = document.getElementById('knowledge-graph').parentElement;
-                const fullWidth = parent.clientWidth;
-                const fullHeight = parent.clientHeight;
-                const width = bounds.width;
-                const height = bounds.height;
-                const midX = bounds.x + width / 2;
-                const midY = bounds.y + height / 2;
-                
-                if (width === 0 || height === 0) return;
-                
-                const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
-                const translate = [
-                    fullWidth / 2 - scale * midX,
-                    fullHeight / 2 - scale * midY
-                ];
-                
-                svg.transition().duration(500).call(
-                    zoom.transform,
-                    d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-                );
-            });
-            
-            // 关闭详情面板
-            document.querySelector('.close-details').addEventListener('click', () => {
-                document.querySelector('.node-details').style.display = 'none';
-                resetNodeStyles();
-                currentNode = null;
-            });
-            
-            // 搜索功能
-            const searchInput = document.getElementById('search-input');
-            const searchResults = document.getElementById('search-results');
-            
-            searchInput.addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
-                searchResults.innerHTML = '';
-                
-                if (searchTerm.length === 0) {
-                    searchResults.style.display = 'none';
+            if (!controlsInitialized) {
+                const searchInput = document.getElementById('search-input');
+                const searchResults = document.getElementById('search-results');
+
+                // 工具栏功能
+                document.getElementById('zoom-in').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        svg.transition().duration(500).call(zoom.scaleBy, 1.5);
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.zoomBy(1.25);
+                    }
+                });
+
+                document.getElementById('zoom-out').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        svg.transition().duration(500).call(zoom.scaleBy, 0.75);
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.zoomBy(0.8);
+                    }
+                });
+
+                document.getElementById('reset-view').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.resetView();
+                    }
                     resetNodeStyles();
-                    return;
-                }
-                
-                const foundNodes = graphData.nodes.filter(n => 
-                    n.name.toLowerCase().includes(searchTerm) || 
-                    n.description.toLowerCase().includes(searchTerm)
-                );
-                
-                if (foundNodes.length > 0) {
-                    searchResults.style.display = 'block';
-                    foundNodes.forEach(n => {
-                        const resultItem = document.createElement('div');
-                        resultItem.className = 'search-result-item';
-                        resultItem.textContent = n.name;
-                        resultItem.setAttribute('data-node-id', n.id);
-                        resultItem.addEventListener('click', () => {
-                            searchInput.value = '';
-                            searchResults.style.display = 'none';
-                            focusOnNode(n.id);
+                    if (graph3DRenderer) {
+                        graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+                        graph3DRenderer.refreshStyles();
+                    }
+                });
+
+                document.getElementById('center-graph').addEventListener('click', () => {
+                    if (currentView === '2d' && svg) {
+                        const bounds = document.getElementById('knowledge-graph').getBBox();
+                        const parent = document.getElementById('knowledge-graph').parentElement;
+                        const fullWidth = parent.clientWidth;
+                        const fullHeight = parent.clientHeight;
+                        const width = bounds.width;
+                        const height = bounds.height;
+                        const midX = bounds.x + width / 2;
+                        const midY = bounds.y + height / 2;
+
+                        if (width === 0 || height === 0) return;
+
+                        const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
+                        const translate = [
+                            fullWidth / 2 - scale * midX,
+                            fullHeight / 2 - scale * midY
+                        ];
+
+                        svg.transition().duration(500).call(
+                            zoom.transform,
+                            d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+                        );
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.resetView();
+                    }
+                });
+
+                // 关闭详情面板
+                document.querySelector('.close-details').addEventListener('click', () => {
+                    document.querySelector('.node-details').style.display = 'none';
+                    currentNode = null;
+                    resetNodeStyles();
+                });
+
+                // 搜索功能
+                searchInput.addEventListener('input', (e) => {
+                    const searchTerm = e.target.value.toLowerCase();
+                    searchResults.innerHTML = '';
+
+                    if (searchTerm.length === 0) {
+                        searchResults.style.display = 'none';
+                        resetNodeStyles();
+                        searchHighlightIds = new Set();
+                        if (graph3DRenderer) {
+                            graph3DRenderer.setSearchHighlights(searchHighlightIds);
+                            graph3DRenderer.refreshStyles();
+                        }
+                        return;
+                    }
+
+                    const foundNodes = graphData.nodes.filter(n =>
+                        n.name.toLowerCase().includes(searchTerm) ||
+                        n.description.toLowerCase().includes(searchTerm)
+                    );
+
+                    if (foundNodes.length > 0) {
+                        searchResults.style.display = 'block';
+                        foundNodes.forEach(n => {
+                            const resultItem = document.createElement('div');
+                            resultItem.className = 'search-result-item';
+                            resultItem.textContent = n.name;
+                            resultItem.setAttribute('data-node-id', n.id);
+                            resultItem.addEventListener('click', () => {
+                                searchInput.value = '';
+                                searchResults.style.display = 'none';
+                                focusOnNode(n.id);
+                            });
+                            searchResults.appendChild(resultItem);
                         });
-                        searchResults.appendChild(resultItem);
+                    } else {
+                        searchResults.style.display = 'none';
+                    }
+
+                    // 高亮匹配节点
+                    resetNodeStyles();
+                    searchHighlightIds = new Set(foundNodes.map(n => n.id));
+                    if (node) {
+                        node.filter(d => foundNodes.some(n => n.id === d.id))
+                            .classed('highlighted', true);
+                    }
+                    if (text) {
+                        text.filter(d => foundNodes.some(n => n.id === d.id))
+                            .classed('highlighted', true);
+                    }
+                    if (graph3DRenderer) {
+                        graph3DRenderer.setSearchHighlights(searchHighlightIds);
+                        graph3DRenderer.refreshStyles();
+                    }
+                });
+
+                // 点击其他地方关闭搜索结果
+                document.addEventListener('click', (e) => {
+                    if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                        searchResults.style.display = 'none';
+                    }
+                });
+
+                // 知识领域筛选
+                document.querySelectorAll('#domain-filters input').forEach(filter => {
+                    filter.addEventListener('change', applyFilters);
+                });
+
+                // 关系类型筛选
+                document.querySelectorAll('#relation-filters input').forEach(filter => {
+                    filter.addEventListener('change', applyFilters);
+                });
+
+                // 图谱操作
+                document.getElementById('show-links').addEventListener('change', applyFilters);
+                document.getElementById('show-labels').addEventListener('change', applyFilters);
+                document.getElementById('show-link-labels').addEventListener('change', applyFilters);
+
+                document.getElementById('auto-layout').addEventListener('change', function() {
+                    autoLayoutEnabled2D = this.checked;
+                    if (simulation) {
+                        if (autoLayoutEnabled2D) {
+                            simulation.alpha(0.8).alphaTarget(0.3).restart();
+                        } else {
+                            simulation.alphaTarget(0);
+                            simulation.stop();
+                            update2DGraphPositions();
+                        }
+                    }
+                    if (graph3DRenderer) {
+                        graph3DRenderer.setAutoLayoutEnabled(this.checked);
+                    }
+                });
+
+                document.querySelectorAll('input[name="graph-view"]').forEach(radio => {
+                    radio.addEventListener('change', (event) => {
+                        if (!event.target.checked) return;
+                        switchGraphView(event.target.value);
                     });
-                } else {
-                    searchResults.style.display = 'none';
-                }
-                
-                // 高亮匹配节点
-                resetNodeStyles();
-                node.filter(d => foundNodes.some(n => n.id === d.id))
-                    .classed('highlighted', true);
-                text.filter(d => foundNodes.some(n => n.id === d.id))
-                    .classed('highlighted', true);
-            });
-            
-            // 点击其他地方关闭搜索结果
-            document.addEventListener('click', (e) => {
-                if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
-                    searchResults.style.display = 'none';
-                }
-            });
-            
-            // 知识领域筛选
-            const domainFilters = document.querySelectorAll('#domain-filters input');
-            domainFilters.forEach(filter => {
-                filter.addEventListener('change', applyFilters);
-            });
-            
-            // 关系类型筛选
-            const relationFilters = document.querySelectorAll('#relation-filters input');
-            relationFilters.forEach(filter => {
-                filter.addEventListener('change', applyFilters);
-            });
-            
-            // 图谱操作
-            document.getElementById('show-links').addEventListener('change', function() {
-                link.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('show-labels').addEventListener('change', function() {
-                text.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('show-link-labels').addEventListener('change', function() {
-                linkLabels.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('auto-layout').addEventListener('change', function() {
-                if (this.checked) {
-                    simulation.alphaTarget(0.3).restart();
-                } else {
-                    // 当自动布局关闭时，我们不完全停止模拟，而是保持一个非常低的alphaTarget
-                    // 这样节点仍然可以响应拖拽事件
-                    simulation.alphaTarget(0.001);
-                }
-            });
+                });
+
+                controlsInitialized = true;
+            }
+
+            applyFilters();
+
+            const detailsPanelVisible = document.querySelector('.node-details').style.display !== 'none';
+            if (currentNode && detailsPanelVisible) {
+                showNodeDetails(null, currentNode);
+            }
         }
         
         // 初始化关系类型筛选
@@ -2266,63 +3380,116 @@
         function applyFilters() {
             const selectedDomains = Array.from(document.querySelectorAll('#domain-filters input:checked'))
                 .map(input => input.value);
-                
+
             const selectedRelations = Array.from(document.querySelectorAll('#relation-filters input:checked'))
                 .map(input => input.value);
-                
-            node.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
-            text.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
-            
-            // 隐藏/显示相关连线
-            link.style('display', d => {
-                const sourceVisible = selectedDomains.includes(d.source.type);
-                const targetVisible = selectedDomains.includes(d.target.type);
-                const relationVisible = selectedRelations.includes(d.type);
-                return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
-            });
-            
-            linkLabels.style('display', d => {
-                const sourceVisible = selectedDomains.includes(d.source.type);
-                const targetVisible = selectedDomains.includes(d.target.type);
-                const relationVisible = selectedRelations.includes(d.type);
-                const showLabels = document.getElementById('show-link-labels').checked;
-                return sourceVisible && targetVisible && relationVisible && showLabels ? 'block' : 'none';
-            });
+
+            activeDomains = selectedDomains;
+            activeRelations = selectedRelations;
+
+            const showLinks = document.getElementById('show-links').checked;
+            const showLabels = document.getElementById('show-labels').checked;
+            const showLinkLabels = document.getElementById('show-link-labels').checked;
+
+            if (node) {
+                node.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
+            }
+
+            if (text) {
+                text.style('display', d => (selectedDomains.includes(d.type) && showLabels) ? 'block' : 'none');
+            }
+
+            if (link) {
+                link.style('display', d => {
+                    if (!showLinks) return 'none';
+                    const sourceType = getNodeType(d.source);
+                    const targetType = getNodeType(d.target);
+                    const relationVisible = selectedRelations.includes(d.type);
+                    const sourceVisible = sourceType ? selectedDomains.includes(sourceType) : false;
+                    const targetVisible = targetType ? selectedDomains.includes(targetType) : false;
+                    return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
+                });
+            }
+
+            if (linkLabels) {
+                linkLabels.style('display', d => {
+                    if (!showLinkLabels) return 'none';
+                    const sourceType = getNodeType(d.source);
+                    const targetType = getNodeType(d.target);
+                    const relationVisible = selectedRelations.includes(d.type);
+                    const sourceVisible = sourceType ? selectedDomains.includes(sourceType) : false;
+                    const targetVisible = targetType ? selectedDomains.includes(targetType) : false;
+                    return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
+                });
+            }
+
+            if (graph3DRenderer) {
+                graph3DRenderer.setShowLinks(showLinks);
+                graph3DRenderer.setShowLabels(showLabels);
+                graph3DRenderer.setShowLinkLabels(showLinkLabels);
+            }
+
+            update3DGraphData();
         }
         
         // 重置节点样式
         function resetNodeStyles() {
-            node.classed('highlighted', false)
-                .attr('fill', d => colorMap[d.type])
-                .attr('stroke', 'none');
-                
-            text.classed('highlighted', false)
-                .style('font-weight', d => d.id === 0 ? 'bold' : 'normal')
-                .style('font-size', d => d.id === 0 ? '14px' : '12px');
+            if (node) {
+                node.classed('highlighted', false)
+                    .attr('fill', d => colorMap[d.type])
+                    .attr('stroke', 'none');
+            }
+
+            if (text) {
+                text.classed('highlighted', false)
+                    .style('font-weight', d => d.id === 0 ? 'bold' : 'normal')
+                    .style('font-size', d => d.id === 0 ? '14px' : '12px');
+            }
+
+            searchHighlightIds = new Set();
+
+            if (graph3DRenderer) {
+                graph3DRenderer.setSearchHighlights(searchHighlightIds);
+                graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+                graph3DRenderer.refreshStyles();
+            }
         }
         
         // 拖动函数 - 确保节点和图形同步移动
         function dragstarted(event, d) {
-            // 当自动布局关闭时，我们仍然需要激活模拟，否则节点无法拖动
-            if (!event.active) simulation.alphaTarget(0.3).restart();
+            // 自动布局开启时重新激活模拟，关闭时仅跟随指针移动
+            if (!event.active && simulation && autoLayoutEnabled2D) {
+                simulation.alphaTarget(0.3).restart();
+            }
             d.fx = d.x;
             d.fy = d.y;
         }
-        
+
         function dragged(event, d) {
-            d.fx = event.x;
-            d.fy = event.y;
+            if (autoLayoutEnabled2D) {
+                d.fx = event.x;
+                d.fy = event.y;
+            } else {
+                d.x = event.x;
+                d.y = event.y;
+                update2DGraphPositions();
+            }
         }
-        
+
         function dragended(event, d) {
-            // 如果自动布局关闭，我们不完全停止模拟，而是保持一个非常低的alphaTarget
-            // 这样节点仍然可以响应拖拽事件
-            if (!event.active) {
-                if (document.getElementById('auto-layout').checked) {
+            // 根据自动布局状态决定是否保持模拟运行
+            if (!event.active && simulation) {
+                if (autoLayoutEnabled2D) {
                     simulation.alphaTarget(0.3);
                 } else {
-                    simulation.alphaTarget(0.001);
+                    simulation.alphaTarget(0);
+                    simulation.stop();
                 }
+            }
+            if (!autoLayoutEnabled2D) {
+                d.x = event.x;
+                d.y = event.y;
+                update2DGraphPositions();
             }
             d.fx = null;
             d.fy = null;
@@ -2330,27 +3497,32 @@
         
         // 显示节点详情
         function showNodeDetails(event, d) {
-            currentNode = d;
+            const baseNode = getNodeData(d);
+            if (!baseNode) return;
+
+            currentNode = baseNode;
             const detailsPanel = document.querySelector('.node-details');
-            document.getElementById('detail-title').textContent = d.name;
-            document.getElementById('detail-type').textContent = typeNames[d.type] || d.type;
-            document.getElementById('detail-description').textContent = d.description;
-            
+            document.getElementById('detail-title').textContent = baseNode.name;
+            document.getElementById('detail-type').textContent = typeNames[baseNode.type] || baseNode.type;
+            document.getElementById('detail-description').textContent = baseNode.description;
+
             // 清空相关节点
             const relatedNodesContainer = document.getElementById('related-nodes');
             relatedNodesContainer.innerHTML = '';
-            
+
             // 查找相关节点
-            const relatedLinks = graphData.links.filter(link => 
-                link.source.id === d.id || link.target.id === d.id
+            const relatedLinks = graphData.links.filter(link =>
+                getNodeId(link.source) === baseNode.id || getNodeId(link.target) === baseNode.id
             );
-            
+
             const relatedNodeIds = new Set();
             relatedLinks.forEach(link => {
-                if (link.source.id !== d.id) relatedNodeIds.add(link.source.id);
-                if (link.target.id !== d.id) relatedNodeIds.add(link.target.id);
+                const sourceId = getNodeId(link.source);
+                const targetId = getNodeId(link.target);
+                if (sourceId !== baseNode.id) relatedNodeIds.add(sourceId);
+                if (targetId !== baseNode.id) relatedNodeIds.add(targetId);
             });
-            
+
             // 添加相关节点
             relatedNodeIds.forEach(id => {
                 const relatedNode = graphData.nodes.find(node => node.id === id);
@@ -2371,8 +3543,8 @@
             const bioListContainer = document.getElementById('bio-list');
             bioListContainer.innerHTML = '';
 
-            if (d.highlights && d.highlights.length > 0) {
-                d.highlights.forEach(item => {
+            if (baseNode.highlights && baseNode.highlights.length > 0) {
+                baseNode.highlights.forEach(item => {
                     const bioItem = document.createElement('p');
                     bioItem.className = 'bio-item';
                     bioItem.textContent = item;
@@ -2387,47 +3559,211 @@
             
             // 显示详情面板
             detailsPanel.style.display = 'block';
-            
+
             // 高亮当前节点
             resetNodeStyles();
-            node.filter(d => d.id === currentNode.id)
-                .classed('highlighted', true)
-                .attr('stroke', '#ffcc00')
-                .attr('stroke-width', 3);
-                
-            text.filter(d => d.id === currentNode.id)
-                .classed('highlighted', true);
+            if (node) {
+                node.filter(nodeDatum => nodeDatum.id === currentNode.id)
+                    .classed('highlighted', true)
+                    .attr('stroke', '#ffcc00')
+                    .attr('stroke-width', 3);
+            }
+
+            if (text) {
+                text.filter(nodeDatum => nodeDatum.id === currentNode.id)
+                    .classed('highlighted', true);
+            }
+
+            if (graph3DRenderer) {
+                graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+                graph3DRenderer.refreshStyles();
+            }
         }
-        
+
         // 定位到特定节点
         function focusOnNode(nodeId) {
-            const nodeData = graphData.nodes.find(n => n.id === nodeId);
+            const nodeData = getNodeData(nodeId);
             if (!nodeData) return;
-            
-            const svg = d3.select('#knowledge-graph');
+
+            if (currentView === '3d' && graph3DRenderer) {
+                graph3DRenderer.focusNode(nodeId);
+                graph3DRenderer.setCurrentNode(nodeId);
+                graph3DRenderer.refreshStyles();
+                showNodeDetails(null, nodeData);
+                return;
+            }
+
             const width = document.getElementById('knowledge-graph').clientWidth;
             const height = document.getElementById('knowledge-graph').clientHeight;
-            
-            // 使用保存的位置信息
-            const nodePosition = lastNodePositions[nodeId] || { x: width/2, y: height/2 };
-            
-            // 计算缩放和平移
+
+            const nodePosition = lastNodePositions[nodeId] || { x: width / 2, y: height / 2 };
+
             const scale = 2.5;
             const x = width / 2 - scale * nodePosition.x;
             const y = height / 2 - scale * nodePosition.y;
-            
-            // 执行动画
-            svg.transition()
-                .duration(750)
-                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
-            
-            // 高亮节点并显示详情
+
+            if (svg) {
+                svg.transition()
+                    .duration(750)
+                    .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+            }
+
             showNodeDetails(null, nodeData);
         }
-        
-        // 初始化图谱
-        window.addEventListener('load', initKnowledgeGraph);
-        window.addEventListener('resize', initKnowledgeGraph);
+
+        function init3DGraph() {
+            const container = document.getElementById('graph-3d');
+            if (!container) return;
+
+            clearGraphError();
+
+            if (!graph3DRenderer) {
+                graph3DRenderer = create3DRenderer(container, {
+                    onNodeClick: node => focusOnNode(node.id),
+                    getNodeColor: get3DNodeColor,
+                    getLinkColor: link => relationColorMap[link.type] || '#999',
+                    getNodeLabel: node => node.name
+                });
+            }
+
+            const showLinks = document.getElementById('show-links') ? document.getElementById('show-links').checked : true;
+            const showLabels = document.getElementById('show-labels') ? document.getElementById('show-labels').checked : true;
+            const showLinkLabels = document.getElementById('show-link-labels') ? document.getElementById('show-link-labels').checked : false;
+            const autoLayoutEnabled = document.getElementById('auto-layout') ? document.getElementById('auto-layout').checked : true;
+
+            graph3DRenderer.setShowLinks(showLinks);
+            graph3DRenderer.setShowLabels(showLabels);
+            graph3DRenderer.setShowLinkLabels(showLinkLabels);
+            graph3DRenderer.setAutoLayoutEnabled(autoLayoutEnabled);
+
+            const { width, height } = getGraphContainerSize();
+            graph3DRenderer.resize(width, height);
+            update3DGraphData();
+            graph3DRenderer.setSearchHighlights(searchHighlightIds);
+            graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+            graph3DRenderer.refreshStyles();
+            show3DHintOverlay();
+        }
+
+        function update3DGraphData() {
+            if (!graph3DRenderer) {
+                return;
+            }
+
+            const selectedDomains = activeDomains && activeDomains.length > 0
+                ? activeDomains
+                : Array.from(new Set(rawGraphData.nodes.map(node => node.type)));
+
+            const selectedRelations = activeRelations && activeRelations.length > 0
+                ? activeRelations
+                : Array.from(new Set(rawGraphData.links.map(link => link.type)));
+
+            const filteredNodes = rawGraphData.nodes
+                .filter(node => selectedDomains.includes(node.type))
+                .map(node => ({ ...node }));
+
+            const allowedNodeIds = new Set(filteredNodes.map(node => node.id));
+
+            const filteredLinks = rawGraphData.links
+                .filter(link => {
+                    const sourceId = getNodeId(link.source);
+                    const targetId = getNodeId(link.target);
+                    const sourceNode = rawNodeMap.get(sourceId);
+                    const targetNode = rawNodeMap.get(targetId);
+                    if (!sourceNode || !targetNode) return false;
+                    const domainVisible = selectedDomains.includes(sourceNode.type) && selectedDomains.includes(targetNode.type);
+                    return domainVisible && selectedRelations.includes(link.type);
+                })
+                .map(link => ({
+                    source: getNodeId(link.source),
+                    target: getNodeId(link.target),
+                    relation: link.relation,
+                    type: link.type
+                }));
+
+            const showLinksControl = document.getElementById('show-links');
+            const showLabelsControl = document.getElementById('show-labels');
+            const showLinkLabelsControl = document.getElementById('show-link-labels');
+            const autoLayoutControl = document.getElementById('auto-layout');
+
+            graph3DRenderer.setData(filteredNodes, filteredLinks);
+            graph3DRenderer.setNodeColorGetter(get3DNodeColor);
+            graph3DRenderer.setLinkColorGetter(link => relationColorMap[link.type] || '#999');
+            if (showLinksControl) {
+                graph3DRenderer.setShowLinks(showLinksControl.checked);
+            }
+            if (showLabelsControl) {
+                graph3DRenderer.setShowLabels(showLabelsControl.checked);
+            }
+            if (showLinkLabelsControl) {
+                graph3DRenderer.setShowLinkLabels(showLinkLabelsControl.checked);
+            }
+            if (autoLayoutControl) {
+                graph3DRenderer.setAutoLayoutEnabled(autoLayoutControl.checked);
+            }
+
+            const highlightId = currentNode && allowedNodeIds.has(currentNode.id) ? currentNode.id : null;
+            graph3DRenderer.setCurrentNode(highlightId);
+            graph3DRenderer.setSearchHighlights(searchHighlightIds);
+            graph3DRenderer.refreshStyles();
+        }
+
+        function switchGraphView(targetView) {
+            if (targetView === currentView) return;
+
+            currentView = targetView;
+            const svgElement = document.getElementById('knowledge-graph');
+            const graph3DContainer = document.getElementById('graph-3d');
+            const toolbar = document.querySelector('.toolbar');
+
+            if (currentView === '3d') {
+                svgElement.style.display = 'none';
+                graph3DContainer.style.display = 'block';
+                if (toolbar) {
+                    toolbar.style.display = 'none';
+                }
+                init3DGraph();
+            } else {
+                svgElement.style.display = 'block';
+                graph3DContainer.style.display = 'none';
+                hide3DHintOverlay();
+                if (toolbar) {
+                    toolbar.style.display = 'flex';
+                }
+                init2DGraph();
+            }
+        }
+
+        function resize3DGraph() {
+            if (!graph3DRenderer) return;
+            const { width, height } = getGraphContainerSize();
+            graph3DRenderer.resize(width, height);
+        }
+
+        function bootstrapGraphs() {
+            init2DGraph();
+            update3DGraphData();
+
+            window.addEventListener('resize', () => {
+                if (currentView === '2d') {
+                    init2DGraph();
+                } else {
+                    resize3DGraph();
+                }
+            });
+        }
+
+        if (typeof d3 === 'undefined') {
+            document.addEventListener('DOMContentLoaded', () => {
+                showGraphError('图谱渲染所需的 D3 库未能加载，请检查网络连接后刷新页面。');
+                const radio3d = document.querySelector('input[value="3d"]');
+                if (radio3d) {
+                    radio3d.disabled = true;
+                }
+            });
+        } else {
+            document.addEventListener('DOMContentLoaded', bootstrapGraphs);
+        }
     </script>
 </body>
 </html>
