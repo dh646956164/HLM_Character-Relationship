@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>红楼梦人物关系知识图谱</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://unpkg.com/3d-force-graph@1.73.1/dist/3d-force-graph.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.1/dist/3d-force-graph.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -79,6 +79,24 @@
             box-shadow: 0 10px 30px rgba(67, 48, 37, 0.25);
             border: 1px solid rgba(150, 90, 60, 0.15);
             position: relative;
+        }
+
+        .graph-error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 250, 242, 0.98);
+            border-radius: 12px;
+            padding: 18px 28px;
+            box-shadow: 0 10px 30px rgba(67, 48, 37, 0.25);
+            border: 1px solid rgba(150, 90, 60, 0.2);
+            color: #7a3b1d;
+            max-width: 80%;
+            line-height: 1.6;
+            font-size: 16px;
+            text-align: center;
+            z-index: 500;
         }
         
         #knowledge-graph {
@@ -1995,6 +2013,27 @@
             };
         }
 
+        function showGraphError(message) {
+            const container = document.querySelector('.graph-container');
+            if (!container) return;
+            let errorNode = container.querySelector('.graph-error');
+            if (!errorNode) {
+                errorNode = document.createElement('div');
+                errorNode.className = 'graph-error';
+                container.appendChild(errorNode);
+            }
+            errorNode.textContent = message;
+        }
+
+        function clearGraphError() {
+            const container = document.querySelector('.graph-container');
+            if (!container) return;
+            const errorNode = container.querySelector('.graph-error');
+            if (errorNode) {
+                errorNode.remove();
+            }
+        }
+
         function getNodeId(nodeRef) {
             return typeof nodeRef === 'object' ? nodeRef.id : nodeRef;
         }
@@ -2074,6 +2113,8 @@
             if (!svgElement) {
                 return;
             }
+
+            clearGraphError();
 
             // 清除之前的SVG内容
             d3.select('#knowledge-graph').selectAll('*').remove();
@@ -2623,6 +2664,21 @@
             const container = document.getElementById('graph-3d');
             if (!container) return;
 
+            if (typeof ForceGraph3D !== 'function') {
+                showGraphError('三维视图所需的渲染库未能加载，当前仅支持二维模式。');
+                const radio3d = document.querySelector('input[value="3d"]');
+                if (radio3d) {
+                    radio3d.checked = false;
+                    radio3d.disabled = true;
+                }
+                const radio2d = document.querySelector('input[value="2d"]');
+                if (radio2d) {
+                    radio2d.checked = true;
+                }
+                currentView = '2d';
+                return;
+            }
+
             if (!graph3D) {
                 graph3D = ForceGraph3D()(container)
                     .backgroundColor('rgba(0, 0, 0, 0)')
@@ -2692,6 +2748,16 @@
         function switchGraphView(targetView) {
             if (targetView === currentView) return;
 
+            if (targetView === '3d' && typeof ForceGraph3D !== 'function') {
+                showGraphError('三维视图所需的渲染库未能加载，当前仅支持二维模式。');
+                const radio2d = document.querySelector('input[value="2d"]');
+                const radio3d = document.querySelector('input[value="3d"]');
+                if (radio2d) radio2d.checked = true;
+                if (radio3d) radio3d.checked = false;
+                currentView = '2d';
+                return;
+            }
+
             currentView = targetView;
             const svgElement = document.getElementById('knowledge-graph');
             const graph3DContainer = document.getElementById('graph-3d');
@@ -2724,19 +2790,30 @@
             graph3D.width(width).height(height);
         }
 
-        // 初始化图谱
-        window.addEventListener('load', () => {
+        function bootstrapGraphs() {
             init2DGraph();
             update3DGraphData();
-        });
 
-        window.addEventListener('resize', () => {
-            if (currentView === '2d') {
-                init2DGraph();
-            } else {
-                resize3DGraph();
-            }
-        });
+            window.addEventListener('resize', () => {
+                if (currentView === '2d') {
+                    init2DGraph();
+                } else {
+                    resize3DGraph();
+                }
+            });
+        }
+
+        if (typeof d3 === 'undefined') {
+            document.addEventListener('DOMContentLoaded', () => {
+                showGraphError('图谱渲染所需的 D3 库未能加载，请检查网络连接后刷新页面。');
+                const radio3d = document.querySelector('input[value="3d"]');
+                if (radio3d) {
+                    radio3d.disabled = true;
+                }
+            });
+        } else {
+            document.addEventListener('DOMContentLoaded', bootstrapGraphs);
+        }
     </script>
 </body>
 </html>
