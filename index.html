@@ -6,7 +6,6 @@
     <title>红楼梦人物关系知识图谱</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.1/dist/3d-force-graph.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -111,6 +110,27 @@
             width: 100%;
             height: 100%;
             display: none;
+        }
+
+        #graph-3d canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .graph-3d-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(31, 26, 24, 0.75);
+            color: #f8f2e8;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+            display: none;
+            z-index: 450;
         }
         
         .search-box {
@@ -572,6 +592,7 @@
             <div class="graph-container">
                 <svg id="knowledge-graph"></svg>
                 <div id="graph-3d"></div>
+                <div class="graph-3d-hint" id="graph-3d-hint">按住拖拽旋转 · 滚轮缩放 · 点击节点查看详情</div>
                 <div class="toolbar">
                     <button id="zoom-in"><i class="fas fa-search-plus"></i></button>
                     <button id="zoom-out"><i class="fas fa-search-minus"></i></button>
@@ -2013,6 +2034,404 @@
             };
         }
 
+        function create3DRenderer(container, options = {}) {
+            const canvas = document.createElement('canvas');
+            canvas.id = 'graph-3d-canvas';
+            container.innerHTML = '';
+            container.appendChild(canvas);
+
+            const ctx = canvas.getContext('2d');
+            const defaultRotationX = -0.35;
+            const defaultRotationY = 0.55;
+            const depthMap = options.layerDepthMap || {
+                root: -40,
+                family: -140,
+                ning: -240,
+                rong: -320,
+                wang: -400,
+                lin: -480,
+                shi: -560,
+                xue: -640,
+                other: -720
+            };
+
+            const state = {
+                width: container.clientWidth || 800,
+                height: container.clientHeight || 600,
+                nodes: [],
+                links: [],
+                projectedNodes: [],
+                basePositions: new Map(),
+                rotationX: defaultRotationX,
+                rotationY: defaultRotationY,
+                targetRotationX: defaultRotationX,
+                targetRotationY: defaultRotationY,
+                scale: 0.9,
+                targetScale: 0.9,
+                cameraDistance: 900,
+                highlightId: null,
+                searchHighlights: new Set(),
+                autoRotate: true,
+                autoRotateSpeed: 0.0008,
+                needsRedraw: true,
+                pointerActive: false,
+                pointerMoved: false,
+                pointerLastX: 0,
+                pointerLastY: 0,
+                onNodeClick: options.onNodeClick || (() => {}),
+                getNodeColor: options.getNodeColor || (() => '#adb5bd'),
+                getLinkColor: options.getLinkColor || (() => '#999'),
+                getNodeLabel: options.getNodeLabel || (node => node.name),
+                autoRotateDelay: options.autoRotateDelay || 7000,
+                autoRotateTimer: null,
+                animationFrameId: null
+            };
+
+            function resize(width, height) {
+                state.width = Math.max(width, 200);
+                state.height = Math.max(height, 200);
+                const ratio = window.devicePixelRatio || 1;
+                canvas.width = state.width * ratio;
+                canvas.height = state.height * ratio;
+                canvas.style.width = `${state.width}px`;
+                canvas.style.height = `${state.height}px`;
+                if (ctx.resetTransform) {
+                    ctx.resetTransform();
+                } else {
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                }
+                ctx.scale(ratio, ratio);
+                state.needsRedraw = true;
+            }
+
+            function scheduleAutoRotate() {
+                if (state.autoRotateTimer) {
+                    clearTimeout(state.autoRotateTimer);
+                }
+                state.autoRotateTimer = setTimeout(() => {
+                    state.autoRotate = true;
+                }, state.autoRotateDelay);
+            }
+
+            function ensureBasePosition(node) {
+                if (state.basePositions.has(node.id)) {
+                    return state.basePositions.get(node.id);
+                }
+
+                const cached = lastNodePositions[node.id];
+                const fallbackX = (Math.random() - 0.5) * 700;
+                const fallbackY = (Math.random() - 0.5) * 700;
+                const depth = depthMap[node.type] !== undefined ? depthMap[node.type] : -680;
+                const basePosition = {
+                    x: (cached ? cached.x : fallbackX) * 1.05,
+                    y: (cached ? cached.y : fallbackY) * 1.05,
+                    z: depth + (Math.random() - 0.5) * 70
+                };
+
+                state.basePositions.set(node.id, basePosition);
+                return basePosition;
+            }
+
+            function setData(nodes, links) {
+                state.nodes = nodes.map(node => {
+                    const base = ensureBasePosition(node);
+                    return {
+                        ...node,
+                        baseX: base.x,
+                        baseY: base.y,
+                        baseZ: base.z
+                    };
+                });
+
+                state.links = links.map(link => ({
+                    source: link.source,
+                    target: link.target,
+                    type: link.type
+                }));
+
+                state.projectedNodes = [];
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
+            function setCurrentNode(nodeId) {
+                state.highlightId = nodeId;
+                state.targetScale = nodeId != null ? Math.max(state.targetScale, 1.1) : Math.max(state.targetScale, 0.9);
+                state.needsRedraw = true;
+            }
+
+            function setSearchHighlights(highlights) {
+                state.searchHighlights = new Set(highlights || []);
+                state.needsRedraw = true;
+            }
+
+            function refreshStyles() {
+                state.needsRedraw = true;
+            }
+
+            function focusNode(nodeId) {
+                const node = state.nodes.find(n => n.id === nodeId);
+                if (!node) return;
+
+                const angleY = Math.atan2(node.baseX, -node.baseZ);
+                const angleX = Math.atan2(node.baseY, -node.baseZ);
+
+                state.targetRotationY = angleY;
+                state.targetRotationX = -angleX;
+                state.targetScale = 1.35;
+                state.highlightId = nodeId;
+                state.autoRotate = false;
+                scheduleAutoRotate();
+                state.needsRedraw = true;
+            }
+
+            function resetView() {
+                state.targetRotationX = defaultRotationX;
+                state.targetRotationY = defaultRotationY;
+                state.targetScale = 0.9;
+                state.autoRotate = true;
+                scheduleAutoRotate();
+                state.needsRedraw = true;
+            }
+
+            function stopAutoRotate() {
+                state.autoRotate = false;
+                if (state.autoRotateTimer) {
+                    clearTimeout(state.autoRotateTimer);
+                }
+            }
+
+            function setNodeColorGetter(fn) {
+                if (typeof fn === 'function') {
+                    state.getNodeColor = fn;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function setLinkColorGetter(fn) {
+                if (typeof fn === 'function') {
+                    state.getLinkColor = fn;
+                    state.needsRedraw = true;
+                }
+            }
+
+            function handleClick(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+
+                let closest = null;
+                let closestDistance = Infinity;
+
+                state.projectedNodes.forEach(item => {
+                    const dx = item.x - x;
+                    const dy = item.y - y;
+                    const distance = Math.hypot(dx, dy);
+                    if (distance < closestDistance && distance <= item.radius + 8) {
+                        closest = item;
+                        closestDistance = distance;
+                    }
+                });
+
+                if (closest) {
+                    state.onNodeClick(closest.node);
+                }
+            }
+
+            function renderFrame() {
+                state.animationFrameId = requestAnimationFrame(renderFrame);
+
+                if (state.autoRotate) {
+                    state.rotationY += state.autoRotateSpeed;
+                    state.targetRotationY = state.rotationY;
+                } else {
+                    state.rotationY += (state.targetRotationY - state.rotationY) * 0.08;
+                }
+                state.rotationX += (state.targetRotationX - state.rotationX) * 0.08;
+                state.scale += (state.targetScale - state.scale) * 0.08;
+
+                if (!state.needsRedraw &&
+                    Math.abs(state.rotationX - state.targetRotationX) < 0.0005 &&
+                    Math.abs(state.rotationY - state.targetRotationY) < 0.0005 &&
+                    Math.abs(state.scale - state.targetScale) < 0.0005) {
+                    return;
+                }
+
+                state.needsRedraw = false;
+
+                ctx.clearRect(0, 0, state.width, state.height);
+
+                const cosY = Math.cos(state.rotationY);
+                const sinY = Math.sin(state.rotationY);
+                const cosX = Math.cos(state.rotationX);
+                const sinX = Math.sin(state.rotationX);
+                const widthHalf = state.width / 2;
+                const heightHalf = state.height / 2;
+
+                const projected = [];
+
+                state.nodes.forEach(node => {
+                    const x = node.baseX;
+                    const y = node.baseY;
+                    const z = node.baseZ;
+
+                    let x1 = x * cosY - z * sinY;
+                    let z1 = x * sinY + z * cosY;
+                    let y1 = y * cosX - z1 * sinX;
+                    z1 = y * sinX + z1 * cosX;
+
+                    const denom = state.cameraDistance - z1;
+                    if (denom < 30) {
+                        return;
+                    }
+
+                    const perspective = state.cameraDistance / denom;
+                    const screenScale = state.scale * perspective * 0.7;
+                    const screenX = x1 * screenScale + widthHalf;
+                    const screenY = y1 * screenScale + heightHalf;
+                    const radius = Math.max(3.2, 6 * screenScale);
+
+                    projected.push({
+                        node,
+                        x: screenX,
+                        y: screenY,
+                        radius,
+                        depth: z1,
+                        perspective
+                    });
+                });
+
+                state.projectedNodes = projected;
+
+                const projectedMap = new Map(projected.map(item => [item.node.id, item]));
+
+                ctx.save();
+                ctx.globalAlpha = 0.65;
+                state.links.forEach(link => {
+                    const source = projectedMap.get(link.source);
+                    const target = projectedMap.get(link.target);
+                    if (!source || !target) return;
+                    ctx.strokeStyle = state.getLinkColor(link);
+                    ctx.lineWidth = Math.max(0.6, 1.1 * Math.min(source.perspective, target.perspective));
+                    ctx.beginPath();
+                    ctx.moveTo(source.x, source.y);
+                    ctx.lineTo(target.x, target.y);
+                    ctx.stroke();
+                });
+                ctx.restore();
+
+                const sortedNodes = projected.slice().sort((a, b) => a.depth - b.depth);
+
+                sortedNodes.forEach(item => {
+                    const { node } = item;
+                    ctx.beginPath();
+                    ctx.fillStyle = state.getNodeColor(node);
+                    ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    if (node.id === state.highlightId) {
+                        ctx.lineWidth = 2.5;
+                        ctx.strokeStyle = '#ffcc00';
+                        ctx.stroke();
+                    } else if (state.searchHighlights.has(node.id)) {
+                        ctx.lineWidth = 1.6;
+                        ctx.strokeStyle = '#ff8c00';
+                        ctx.stroke();
+                    } else {
+                        ctx.lineWidth = 0.8;
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+                        ctx.stroke();
+                    }
+
+                    const shouldShowLabel = node.id === state.highlightId || state.searchHighlights.has(node.id) || item.perspective > 0.55;
+                    if (shouldShowLabel) {
+                        ctx.fillStyle = 'rgba(30, 27, 25, 0.85)';
+                        ctx.font = `${Math.max(11, Math.min(18, 12 * item.perspective + 2))}px 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(state.getNodeLabel(node), item.x, item.y - item.radius - 6);
+                    }
+                });
+            }
+
+            function handlePointerDown(event) {
+                stopAutoRotate();
+                state.pointerActive = true;
+                state.pointerMoved = false;
+                state.pointerLastX = event.clientX;
+                state.pointerLastY = event.clientY;
+                canvas.setPointerCapture(event.pointerId);
+            }
+
+            function handlePointerMove(event) {
+                if (!state.pointerActive) return;
+                const dx = event.clientX - state.pointerLastX;
+                const dy = event.clientY - state.pointerLastY;
+                if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                    state.pointerMoved = true;
+                }
+                state.rotationY += dx * 0.005;
+                state.rotationX += dy * 0.005;
+                state.rotationX = Math.max(-1.2, Math.min(1.2, state.rotationX));
+                state.targetRotationY = state.rotationY;
+                state.targetRotationX = state.rotationX;
+                state.pointerLastX = event.clientX;
+                state.pointerLastY = event.clientY;
+                state.needsRedraw = true;
+            }
+
+            function handlePointerUp(event) {
+                if (!state.pointerActive) return;
+                canvas.releasePointerCapture(event.pointerId);
+                state.pointerActive = false;
+                scheduleAutoRotate();
+                if (!state.pointerMoved) {
+                    handleClick(event);
+                }
+            }
+
+            function handleWheel(event) {
+                event.preventDefault();
+                stopAutoRotate();
+                const scaleFactor = event.deltaY > 0 ? 0.9 : 1.1;
+                state.targetScale = Math.min(2.2, Math.max(0.45, state.targetScale * scaleFactor));
+                state.needsRedraw = true;
+                scheduleAutoRotate();
+            }
+
+            canvas.addEventListener('pointerdown', handlePointerDown);
+            canvas.addEventListener('pointermove', handlePointerMove);
+            canvas.addEventListener('pointerup', handlePointerUp);
+            canvas.addEventListener('pointercancel', handlePointerUp);
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+            resize(state.width, state.height);
+            scheduleAutoRotate();
+            renderFrame();
+
+            return {
+                resize,
+                setData,
+                setCurrentNode,
+                setSearchHighlights,
+                refreshStyles,
+                focusNode,
+                resetView,
+                setNodeColorGetter,
+                setLinkColorGetter,
+                stopAutoRotate,
+                scheduleAutoRotate,
+                destroy() {
+                    if (state.animationFrameId) {
+                        cancelAnimationFrame(state.animationFrameId);
+                    }
+                    if (state.autoRotateTimer) {
+                        clearTimeout(state.autoRotateTimer);
+                    }
+                }
+            };
+        }
+
         function showGraphError(message) {
             const container = document.querySelector('.graph-container');
             if (!container) return;
@@ -2031,6 +2450,29 @@
             const errorNode = container.querySelector('.graph-error');
             if (errorNode) {
                 errorNode.remove();
+            }
+        }
+
+        function show3DHintOverlay() {
+            const hint = document.getElementById('graph-3d-hint');
+            if (!hint) return;
+            hint.style.display = 'block';
+            if (graph3DHintTimer) {
+                clearTimeout(graph3DHintTimer);
+            }
+            graph3DHintTimer = setTimeout(() => {
+                hint.style.display = 'none';
+                graph3DHintTimer = null;
+            }, 5000);
+        }
+
+        function hide3DHintOverlay() {
+            const hint = document.getElementById('graph-3d-hint');
+            if (!hint) return;
+            hint.style.display = 'none';
+            if (graph3DHintTimer) {
+                clearTimeout(graph3DHintTimer);
+                graph3DHintTimer = null;
             }
         }
 
@@ -2077,13 +2519,14 @@
         let lastNodePositions = {};
         let currentNode = null;
         let relationTypes = new Set();
-        let graph3D = null;
+        let graph3DRenderer = null;
         let controlsInitialized = false;
         let relationFiltersInitialized = false;
         let currentView = '2d';
         let searchHighlightIds = new Set();
         let activeDomains = Array.from(new Set(rawGraphData.nodes.map(node => node.type)));
         let activeRelations = Array.from(new Set(rawGraphData.links.map(link => link.type)));
+        let graph3DHintTimer = null;
 
         function getGraphContainerSize() {
             const container = document.querySelector('.graph-container');
@@ -2263,10 +2706,14 @@
                 document.getElementById('reset-view').addEventListener('click', () => {
                     if (currentView === '2d' && svg) {
                         svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
-                    } else if (currentView === '3d' && graph3D) {
-                        graph3D.zoomToFit(1000, 100);
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.resetView();
                     }
                     resetNodeStyles();
+                    if (graph3DRenderer) {
+                        graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+                        graph3DRenderer.refreshStyles();
+                    }
                 });
 
                 document.getElementById('center-graph').addEventListener('click', () => {
@@ -2292,8 +2739,8 @@
                             zoom.transform,
                             d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
                         );
-                    } else if (currentView === '3d' && graph3D) {
-                        graph3D.zoomToFit(1000, 100);
+                    } else if (currentView === '3d' && graph3DRenderer) {
+                        graph3DRenderer.resetView();
                     }
                 });
 
@@ -2313,8 +2760,9 @@
                         searchResults.style.display = 'none';
                         resetNodeStyles();
                         searchHighlightIds = new Set();
-                        if (graph3D) {
-                            graph3D.nodeColor(get3DNodeColor);
+                        if (graph3DRenderer) {
+                            graph3DRenderer.setSearchHighlights(searchHighlightIds);
+                            graph3DRenderer.refreshStyles();
                         }
                         return;
                     }
@@ -2353,8 +2801,9 @@
                         text.filter(d => foundNodes.some(n => n.id === d.id))
                             .classed('highlighted', true);
                     }
-                    if (graph3D) {
-                        graph3D.nodeColor(get3DNodeColor);
+                    if (graph3DRenderer) {
+                        graph3DRenderer.setSearchHighlights(searchHighlightIds);
+                        graph3DRenderer.refreshStyles();
                     }
                 });
 
@@ -2500,8 +2949,10 @@
 
             searchHighlightIds = new Set();
 
-            if (graph3D) {
-                graph3D.nodeColor(get3DNodeColor);
+            if (graph3DRenderer) {
+                graph3DRenderer.setSearchHighlights(searchHighlightIds);
+                graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+                graph3DRenderer.refreshStyles();
             }
         }
         
@@ -2611,33 +3062,21 @@
                     .classed('highlighted', true);
             }
 
-            if (graph3D) {
-                graph3D.nodeColor(get3DNodeColor);
+            if (graph3DRenderer) {
+                graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+                graph3DRenderer.refreshStyles();
             }
         }
-        
+
         // 定位到特定节点
         function focusOnNode(nodeId) {
             const nodeData = getNodeData(nodeId);
             if (!nodeData) return;
 
-            if (currentView === '3d' && graph3D) {
-                const graphDataset = graph3D.graphData();
-                const node3D = graphDataset.nodes.find(n => n.id === nodeId);
-                if (node3D) {
-                    const distance = 120;
-                    const nodeX = node3D.x || 0;
-                    const nodeY = node3D.y || 0;
-                    const nodeZ = node3D.z || 0;
-                    const currentDistance = Math.max(10, Math.hypot(nodeX, nodeY, nodeZ));
-                    const distRatio = 1 + distance / currentDistance;
-                    graph3D.cameraPosition(
-                        { x: nodeX * distRatio, y: nodeY * distRatio, z: nodeZ * distRatio },
-                        node3D,
-                        1000
-                    );
-                }
-
+            if (currentView === '3d' && graph3DRenderer) {
+                graph3DRenderer.focusNode(nodeId);
+                graph3DRenderer.setCurrentNode(nodeId);
+                graph3DRenderer.refreshStyles();
                 showNodeDetails(null, nodeData);
                 return;
             }
@@ -2664,41 +3103,28 @@
             const container = document.getElementById('graph-3d');
             if (!container) return;
 
-            if (typeof ForceGraph3D !== 'function') {
-                showGraphError('三维视图所需的渲染库未能加载，当前仅支持二维模式。');
-                const radio3d = document.querySelector('input[value="3d"]');
-                if (radio3d) {
-                    radio3d.checked = false;
-                    radio3d.disabled = true;
-                }
-                const radio2d = document.querySelector('input[value="2d"]');
-                if (radio2d) {
-                    radio2d.checked = true;
-                }
-                currentView = '2d';
-                return;
-            }
+            clearGraphError();
 
-            if (!graph3D) {
-                graph3D = ForceGraph3D()(container)
-                    .backgroundColor('rgba(0, 0, 0, 0)')
-                    .nodeLabel(node => `${node.name}`)
-                    .nodeColor(get3DNodeColor)
-                    .linkColor(link => relationColorMap[link.type] || '#999')
-                    .linkWidth(1.5)
-                    .linkOpacity(0.6)
-                    .onNodeClick(node => {
-                        focusOnNode(node.id);
-                    });
+            if (!graph3DRenderer) {
+                graph3DRenderer = create3DRenderer(container, {
+                    onNodeClick: node => focusOnNode(node.id),
+                    getNodeColor: get3DNodeColor,
+                    getLinkColor: link => relationColorMap[link.type] || '#999',
+                    getNodeLabel: node => node.name
+                });
             }
 
             const { width, height } = getGraphContainerSize();
-            graph3D.width(width).height(height);
+            graph3DRenderer.resize(width, height);
             update3DGraphData();
+            graph3DRenderer.setSearchHighlights(searchHighlightIds);
+            graph3DRenderer.setCurrentNode(currentNode ? currentNode.id : null);
+            graph3DRenderer.refreshStyles();
+            show3DHintOverlay();
         }
 
         function update3DGraphData() {
-            if (!graph3D) {
+            if (!graph3DRenderer) {
                 return;
             }
 
@@ -2733,30 +3159,18 @@
                     type: link.type
                 }));
 
-            graph3D.graphData({
-                nodes: filteredNodes,
-                links: filteredLinks
-            });
+            graph3DRenderer.setData(filteredNodes, filteredLinks);
+            graph3DRenderer.setNodeColorGetter(get3DNodeColor);
+            graph3DRenderer.setLinkColorGetter(link => relationColorMap[link.type] || '#999');
 
-            graph3D.nodeColor(get3DNodeColor);
-
-            if (currentNode && allowedNodeIds.has(currentNode.id)) {
-                graph3D.nodeColor(get3DNodeColor);
-            }
+            const highlightId = currentNode && allowedNodeIds.has(currentNode.id) ? currentNode.id : null;
+            graph3DRenderer.setCurrentNode(highlightId);
+            graph3DRenderer.setSearchHighlights(searchHighlightIds);
+            graph3DRenderer.refreshStyles();
         }
 
         function switchGraphView(targetView) {
             if (targetView === currentView) return;
-
-            if (targetView === '3d' && typeof ForceGraph3D !== 'function') {
-                showGraphError('三维视图所需的渲染库未能加载，当前仅支持二维模式。');
-                const radio2d = document.querySelector('input[value="2d"]');
-                const radio3d = document.querySelector('input[value="3d"]');
-                if (radio2d) radio2d.checked = true;
-                if (radio3d) radio3d.checked = false;
-                currentView = '2d';
-                return;
-            }
 
             currentView = targetView;
             const svgElement = document.getElementById('knowledge-graph');
@@ -2770,11 +3184,10 @@
                     toolbar.style.display = 'none';
                 }
                 init3DGraph();
-                resize3DGraph();
-                update3DGraphData();
             } else {
                 svgElement.style.display = 'block';
                 graph3DContainer.style.display = 'none';
+                hide3DHintOverlay();
                 if (toolbar) {
                     toolbar.style.display = 'flex';
                 }
@@ -2783,11 +3196,9 @@
         }
 
         function resize3DGraph() {
-            if (!graph3D) return;
-            const container = document.getElementById('graph-3d');
-            if (!container) return;
+            if (!graph3DRenderer) return;
             const { width, height } = getGraphContainerSize();
-            graph3D.width(width).height(height);
+            graph3DRenderer.resize(width, height);
         }
 
         function bootstrapGraphs() {
