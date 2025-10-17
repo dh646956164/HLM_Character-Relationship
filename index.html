@@ -2078,6 +2078,15 @@
                 scale: 0.9,
                 targetScale: 0.9,
                 cameraDistance: 900,
+                pivotX: 0,
+                pivotY: 0,
+                pivotZ: 0,
+                targetPivotX: 0,
+                targetPivotY: 0,
+                targetPivotZ: 0,
+                defaultPivotX: 0,
+                defaultPivotY: 0,
+                defaultPivotZ: 0,
                 offsetX: 0,
                 offsetY: 0,
                 targetOffsetX: 0,
@@ -2192,6 +2201,39 @@
                     });
                 });
 
+                let sumX = 0;
+                let sumY = 0;
+                let sumZ = 0;
+                const count = state.nodes.length;
+                if (count > 0) {
+                    state.nodes.forEach(node => {
+                        sumX += node.x;
+                        sumY += node.y;
+                        sumZ += node.z;
+                    });
+                    state.defaultPivotX = sumX / count;
+                    state.defaultPivotY = sumY / count;
+                    state.defaultPivotZ = sumZ / count;
+                } else {
+                    state.defaultPivotX = 0;
+                    state.defaultPivotY = 0;
+                    state.defaultPivotZ = 0;
+                }
+
+                if (state.highlightId != null && state.nodeLookup.has(state.highlightId)) {
+                    const focus = state.nodeLookup.get(state.highlightId);
+                    state.targetPivotX = focus.x;
+                    state.targetPivotY = focus.y;
+                    state.targetPivotZ = focus.z;
+                } else {
+                    state.targetPivotX = state.defaultPivotX;
+                    state.targetPivotY = state.defaultPivotY;
+                    state.targetPivotZ = state.defaultPivotZ;
+                }
+                state.pivotX = state.targetPivotX;
+                state.pivotY = state.targetPivotY;
+                state.pivotZ = state.targetPivotZ;
+
                 state.projectedNodes = [];
                 state.needsRedraw = true;
                 scheduleAutoRotate();
@@ -2199,7 +2241,21 @@
 
             function setCurrentNode(nodeId) {
                 state.highlightId = nodeId;
-                state.targetScale = nodeId != null ? Math.max(state.targetScale, 1.1) : Math.max(state.targetScale, 0.9);
+                if (nodeId != null && state.nodeLookup.has(nodeId)) {
+                    const node = state.nodeLookup.get(nodeId);
+                    state.targetPivotX = node.x;
+                    state.targetPivotY = node.y;
+                    state.targetPivotZ = node.z;
+                    state.targetOffsetX = 0;
+                    state.targetOffsetY = 0;
+                    state.targetScale = Math.max(state.targetScale, 1.15);
+                } else {
+                    state.targetPivotX = state.defaultPivotX;
+                    state.targetPivotY = state.defaultPivotY;
+                    state.targetPivotZ = state.defaultPivotZ;
+                    state.targetOffsetX = 0;
+                    state.targetOffsetY = 0;
+                }
                 state.needsRedraw = true;
             }
 
@@ -2216,31 +2272,22 @@
                 const node = state.nodeLookup.get(nodeId);
                 if (!node) return;
 
-                const depth = node.z === 0 ? -1 : -node.z;
-                const angleY = Math.atan2(node.x, depth);
-                const angleX = Math.atan2(node.y, depth);
+                state.targetPivotX = node.x;
+                state.targetPivotY = node.y;
+                state.targetPivotZ = node.z;
+
+                const dx = node.x - state.defaultPivotX;
+                const dy = node.y - state.defaultPivotY;
+                const dz = node.z - state.defaultPivotZ;
+                const depth = dz === 0 ? -1 : -dz;
+                const angleY = Math.atan2(dx, depth);
+                const angleX = Math.atan2(dy, depth);
 
                 state.targetRotationY = angleY;
                 state.targetRotationX = -angleX;
-                state.targetScale = Math.max(state.targetScale, 1.45);
-                const cosY = Math.cos(state.targetRotationY);
-                const sinY = Math.sin(state.targetRotationY);
-                const cosX = Math.cos(state.targetRotationX);
-                const sinX = Math.sin(state.targetRotationX);
-
-                let x1 = node.x * cosY - node.z * sinY;
-                let z1 = node.x * sinY + node.z * cosY;
-                let y1 = node.y * cosX - z1 * sinX;
-                z1 = node.y * sinX + z1 * cosX;
-
-                const denom = state.cameraDistance - z1;
-                if (denom > 30) {
-                    const perspective = state.cameraDistance / denom;
-                    const previewScale = Math.max(state.targetScale, state.scale) * perspective * 0.7;
-                    state.targetOffsetX = -x1 * previewScale;
-                    state.targetOffsetY = -y1 * previewScale;
-                }
-
+                state.targetScale = Math.max(state.targetScale, 1.6);
+                state.targetOffsetX = 0;
+                state.targetOffsetY = 0;
                 state.highlightId = nodeId;
                 state.autoRotate = false;
                 scheduleAutoRotate();
@@ -2255,6 +2302,9 @@
                 state.targetOffsetY = 0;
                 state.offsetX = 0;
                 state.offsetY = 0;
+                state.targetPivotX = state.defaultPivotX;
+                state.targetPivotY = state.defaultPivotY;
+                state.targetPivotZ = state.defaultPivotZ;
                 state.autoRotate = true;
                 scheduleAutoRotate();
                 state.needsRedraw = true;
@@ -2463,12 +2513,43 @@
 
                 const layoutChanged = stepAutoLayout();
 
+                if (state.highlightId != null && state.nodeLookup.has(state.highlightId)) {
+                    const focus = state.nodeLookup.get(state.highlightId);
+                    state.targetPivotX = focus.x;
+                    state.targetPivotY = focus.y;
+                    state.targetPivotZ = focus.z;
+                } else if (state.nodes.length > 0) {
+                    let sumX = 0;
+                    let sumY = 0;
+                    let sumZ = 0;
+                    const count = state.nodes.length;
+                    for (let i = 0; i < count; i++) {
+                        const node = state.nodes[i];
+                        sumX += node.x;
+                        sumY += node.y;
+                        sumZ += node.z;
+                    }
+                    state.defaultPivotX = sumX / count;
+                    state.defaultPivotY = sumY / count;
+                    state.defaultPivotZ = sumZ / count;
+                    state.targetPivotX = state.defaultPivotX;
+                    state.targetPivotY = state.defaultPivotY;
+                    state.targetPivotZ = state.defaultPivotZ;
+                }
+
+                state.pivotX += (state.targetPivotX - state.pivotX) * 0.12;
+                state.pivotY += (state.targetPivotY - state.pivotY) * 0.12;
+                state.pivotZ += (state.targetPivotZ - state.pivotZ) * 0.12;
+
                 if (!state.needsRedraw && !layoutChanged &&
                     Math.abs(state.rotationX - state.targetRotationX) < 0.0005 &&
                     Math.abs(state.rotationY - state.targetRotationY) < 0.0005 &&
                     Math.abs(state.scale - state.targetScale) < 0.0005 &&
                     Math.abs(state.offsetX - state.targetOffsetX) < 0.3 &&
-                    Math.abs(state.offsetY - state.targetOffsetY) < 0.3) {
+                    Math.abs(state.offsetY - state.targetOffsetY) < 0.3 &&
+                    Math.abs(state.pivotX - state.targetPivotX) < 0.4 &&
+                    Math.abs(state.pivotY - state.targetPivotY) < 0.4 &&
+                    Math.abs(state.pivotZ - state.targetPivotZ) < 0.4) {
                     return;
                 }
 
@@ -2485,15 +2566,19 @@
 
                 const projected = [];
 
-                state.nodes.forEach(node => {
-                    const x = node.x;
-                    const y = node.y;
-                    const z = node.z;
+                const pivotX = state.pivotX;
+                const pivotY = state.pivotY;
+                const pivotZ = state.pivotZ;
 
-                    let x1 = x * cosY - z * sinY;
-                    let z1 = x * sinY + z * cosY;
-                    let y1 = y * cosX - z1 * sinX;
-                    z1 = y * sinX + z1 * cosX;
+                state.nodes.forEach(node => {
+                    const relX = node.x - pivotX;
+                    const relY = node.y - pivotY;
+                    const relZ = node.z - pivotZ;
+
+                    let x1 = relX * cosY - relZ * sinY;
+                    let z1 = relX * sinY + relZ * cosY;
+                    let y1 = relY * cosX - z1 * sinX;
+                    z1 = relY * sinX + z1 * cosX;
 
                     const denom = state.cameraDistance - z1;
                     if (denom < 30) {
@@ -2619,6 +2704,9 @@
                 state.pointerMoved = false;
                 const isPanGesture = event.button === 1 || event.button === 2 || event.ctrlKey || event.metaKey || event.shiftKey;
                 state.pointerMode = isPanGesture ? 'pan' : 'rotate';
+                if (state.pointerMode === 'pan' && state.highlightId != null) {
+                    state.pointerMode = 'rotate';
+                }
                 state.pointerLastX = event.clientX;
                 state.pointerLastY = event.clientY;
                 if (isPanGesture) {
