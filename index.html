@@ -3,2431 +3,696 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>红楼梦人物关系知识图谱</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <title>实时手势 3D 粒子舞台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #08090d;
+            --panel: rgba(18, 20, 26, 0.9);
+            --text: #eef1f8;
+            --accent: #6cf0ff;
+            --card: rgba(255, 255, 255, 0.04);
+        }
+
         * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Space Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
         }
-        
+
         body {
-            background: linear-gradient(rgba(92, 24, 28, 0.7), rgba(173, 119, 61, 0.55)),
-                url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1920&q=80');
-            background-size: cover;
-            background-attachment: fixed;
-            background-position: center;
-            background-repeat: no-repeat;
-            color: #433025;
+            background: radial-gradient(circle at 20% 20%, rgba(108, 240, 255, 0.08), transparent 35%),
+                        radial-gradient(circle at 80% 10%, rgba(255, 106, 186, 0.08), transparent 35%),
+                        linear-gradient(145deg, #0c0f1a 0%, #05060b 55%, #0b0f1c 100%);
+            color: var(--text);
             min-height: 100vh;
-            overflow-x: hidden;
-        }
-        
-        .container {
-            max-width: 1800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        header {
-            text-align: center;
-            padding: 20px 0;
-            margin-bottom: 30px;
-            color: #f8f2e8;
-            text-shadow: 0 4px 18px rgba(41, 21, 17, 0.45);
-        }
-        
-        h1 {
-            font-size: 2.8rem;
-            margin-bottom: 10px;
-        }
-        
-        .subtitle {
-            font-size: 1.2rem;
-            opacity: 0.9;
-        }
-        
-        .main-content {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        
-        .control-panel {
-            flex: 1;
-            min-width: 300px;
-            background: rgba(254, 248, 237, 0.94);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 10px 30px rgba(67, 48, 37, 0.25);
-            border: 1px solid rgba(150, 90, 60, 0.15);
-            max-height: 1000px;
-            overflow-y: auto;
-        }
-        
-        .graph-container {
-            flex: 3;
-            min-width: 800px;
-            height: 1000px;
-            background: rgba(254, 248, 237, 0.94);
-            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 10px 30px rgba(67, 48, 37, 0.25);
-            border: 1px solid rgba(150, 90, 60, 0.15);
-            position: relative;
         }
-        
-        #knowledge-graph {
+
+        .app {
+            position: relative;
+            min-height: 100vh;
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+
+        header {
+            padding: 28px clamp(20px, 4vw, 48px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .title-block h1 {
+            font-size: clamp(28px, 2.8vw, 40px);
+            letter-spacing: 0.5px;
+        }
+
+        .title-block p {
+            color: #9ca2b8;
+            margin-top: 6px;
+        }
+
+        .badge {
+            background: rgba(108, 240, 255, 0.12);
+            color: var(--accent);
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(108, 240, 255, 0.4);
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        main {
+            display: grid;
+            grid-template-columns: 1.2fr 420px;
+            gap: clamp(14px, 2vw, 22px);
+            padding: 0 clamp(20px, 4vw, 48px) clamp(20px, 3vw, 32px) clamp(20px, 4vw, 48px);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .canvas-wrap {
+            position: relative;
+            border-radius: 18px;
+            overflow: hidden;
+            background: radial-gradient(circle at 30% 20%, rgba(108, 240, 255, 0.08), transparent 25%),
+                        radial-gradient(circle at 80% 80%, rgba(255, 106, 186, 0.06), transparent 30%),
+                        #05070f;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+        }
+
+        .canvas-surface {
+            width: 100%;
+            height: min(72vh, 820px);
+            display: block;
+        }
+
+        .hud {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .chip {
+            backdrop-filter: blur(12px);
+            background: rgba(12, 14, 22, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 10px 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: #cfd4e5;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+        }
+
+        .chip strong {
+            color: var(--accent);
+        }
+
+        .panel {
+            background: var(--panel);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 18px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            gap: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel::before {
+            content: "U";
+            position: absolute;
+            right: -20px;
+            top: 20px;
+            font-size: 160px;
+            color: rgba(255, 255, 255, 0.02);
+            font-weight: 600;
+            transform: rotate(-10deg);
+            pointer-events: none;
+        }
+
+        .panel h2 {
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-group {
+            background: var(--card);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 12px 14px;
+            display: grid;
+            gap: 10px;
+        }
+
+        label {
+            color: #aeb5c9;
+            font-size: 14px;
+        }
+
+        select, input[type="color"], button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text);
+            outline: none;
+            font-size: 15px;
+            transition: all 0.2s ease;
+        }
+
+        select:focus, input[type="color"]:focus, button:focus {
+            border-color: rgba(108, 240, 255, 0.6);
+        }
+
+        input[type="color"] {
+            height: 46px;
+            padding: 4px;
+        }
+
+        button {
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+
+        button.primary {
+            background: linear-gradient(120deg, #6cf0ff, #7b8bff);
+            color: #041018;
+            border: none;
+        }
+
+        button.ghost {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .status-list {
+            list-style: none;
+            display: grid;
+            gap: 8px;
+        }
+
+        .status-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            color: #c8cee1;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #555e75;
+        }
+
+        .status-dot.live { background: #6cf0ff; box-shadow: 0 0 0 6px rgba(108, 240, 255, 0.15); }
+        .status-dot.idle { background: #ffc857; box-shadow: 0 0 0 6px rgba(255, 200, 87, 0.12); }
+
+        .hint {
+            font-size: 13px;
+            color: #8f96ac;
+            line-height: 1.6;
+        }
+
+        .video-feed {
+            position: absolute;
+            inset: 14px;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            display: none;
+        }
+
+        .video-feed video {
             width: 100%;
             height: 100%;
-        }
-        
-        .search-box {
-            margin-bottom: 35px;
-            position: relative;
-        }
-        
-        .search-box input {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-        
-        .search-box input:focus {
-            border-color: #b85c38;
-            outline: none;
-        }
-        
-        .search-results {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            max-height: 200px;
-            overflow-y: auto;
-            display: none;
-            z-index: 200;
-        }
-        
-        .search-result-item {
-            padding: 10px 15px;
-            cursor: pointer;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .search-result-item:hover {
-            background-color: #f5f7fb;
-        }
-        
-        .control-section {
-            margin-bottom: 25px;
-        }
-        
-        .control-section h3 {
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid rgba(184, 92, 56, 0.4);
-            color: #7a3b1d;
-        }
-        
-        .filter-options {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .filter-options label {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-        }
-        
-        .filter-options input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        
-        .node-details {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 350px;
-            background: rgba(255, 250, 242, 0.98);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 5px 20px rgba(67, 48, 37, 0.25);
-            border: 1px solid rgba(150, 90, 60, 0.15);
-            display: none;
-            max-height: 80%;
-            overflow-y: auto;
-            z-index: 100;
-        }
-        
-        .node-details h2 {
-            color: #7a3b1d;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid rgba(184, 92, 56, 0.4);
-        }
-        
-        .node-details p {
-            margin-bottom: 15px;
-            line-height: 1.6;
-        }
-        
-        .detail-section {
-            margin-bottom: 20px;
-        }
-        
-        .detail-section h4 {
-            margin-bottom: 10px;
-            color: #b85c38;
-        }
-        
-        .related-nodes {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        
-        .related-node {
-            background: rgba(184, 92, 56, 0.15);
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background 0.3s;
-            color: #7a3b1d;
+            object-fit: cover;
+            filter: saturate(1.1) contrast(1.05);
         }
 
-        .related-node:hover {
-            background: rgba(184, 92, 56, 0.25);
-        }
-        
-        .bio-list {
-            display: flex;
-            flex-direction: column;
+        .top-actions {
+            display: grid;
             gap: 10px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .bio-item {
-            background: #f4f6fb;
-            padding: 10px 12px;
-            border-radius: 8px;
-            line-height: 1.6;
-            color: #2c3e50;
-        }
-
-        .bio-empty {
-            color: #777;
-        }
-        
-        .close-details {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            font-size: 24px;
-            cursor: pointer;
-            color: #777;
-        }
-        
-        .legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-top: 20px;
-        }
-        
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-        }
-        
-        .legend-star {
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #d62728;
-        }
-        
-        .relation-legend {
-            margin-top: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .relation-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .relation-color {
-            width: 20px;
-            height: 4px;
-        }
-        
-        .toolbar {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            display: flex;
-            gap: 10px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 10px;
-            border-radius: 8px;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
-        }
-        
-        .toolbar button {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            border: none;
-            background: #4a86e8;
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.3s;
-        }
-        
-        .toolbar button:hover {
-            background: #3a76d8;
-        }
-        
-        .node {
-            cursor: pointer;
-            transition: filter 0.3s;
-        }
-        
-        .node:hover {
-            filter: brightness(1.2);
-        }
-        
-        .node-text {
-            font-size: 12px;
-            pointer-events: none;
-            font-weight: 500;
-            text-shadow: 1px 1px 2px white;
-        }
-        
-        .link {
-            stroke-opacity: 0.6;
-            stroke-width: 2;
-        }
-        
-        .link-label {
-            font-size: 11px;
-            fill: #3a3a3a;
-            font-weight: 600;
-            text-anchor: middle;
-            dominant-baseline: middle;
-            pointer-events: none;
-            paint-order: stroke fill;
-            stroke: rgba(255, 255, 255, 0.9);
-            stroke-width: 3px;
-        }
-        
-        .node.highlighted {
-            stroke: #ffcc00;
-            stroke-width: 3px;
-            filter: brightness(1.3);
-        }
-        
-        .node-text.highlighted {
-            font-weight: bold;
-            font-size: 14px;
-            fill: #d9534f;
-        }
-        
-        .star-node {
-            cursor: pointer;
-            transition: filter 0.3s;
-        }
-        
-        .star-node:hover {
-            filter: brightness(1.2);
-        }
-        
-        .star-node.highlighted {
-            stroke: #ffcc00;
-            stroke-width: 3px;
-            filter: brightness(1.3);
-        }
-        
-        @media (max-width: 1000px) {
-            .main-content {
-                flex-direction: column;
-            }
-            
-            .graph-container {
-                min-width: 100%;
-                height: 600px;
-            }
-            
-            .node-details {
-                width: 300px;
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .graph-container {
-                height: 500px;
-            }
-            
-            .control-panel {
-                max-height: 400px;
-            }
-        }
-        
-        @media (max-width: 600px) {
-            h1 {
-                font-size: 2rem;
-            }
-            
-            .node-details {
-                width: 250px;
-                right: 10px;
-            }
-            
-            .toolbar {
-                bottom: 10px;
-                left: 10px;
-            }
-            
-            .toolbar button {
-                width: 35px;
-                height: 35px;
-            }
-            
-            .graph-container {
-                height: 450px;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .graph-container {
-                height: 400px;
-            }
+        @media (max-width: 1100px) {
+            main { grid-template-columns: 1fr; }
+            .canvas-surface { height: 72vh; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>红楼梦人物关系知识图谱</h1>
-            <p class="subtitle">梳理贾府及相关家族的血缘、婚姻与仆从网络</p>
-        </header>
-        
-        <div class="main-content">
-            <div class="control-panel">
-                <div class="search-box">
-                    <input type="text" id="search-input" placeholder="搜索节点...">
-                    <div class="search-results" id="search-results"></div>
-                </div>
-                
-                <div class="control-section">
-                    <h3>家族/角色筛选</h3>
-                    <div class="filter-options" id="domain-filters">
-                        <label><input type="checkbox" name="domain" value="root" checked> 总览节点</label>
-                        <label><input type="checkbox" name="domain" value="family" checked> 家族分支</label>
-                        <label><input type="checkbox" name="domain" value="ning" checked> 宁国府人物</label>
-                        <label><input type="checkbox" name="domain" value="rong" checked> 荣国府人物</label>
-                        <label><input type="checkbox" name="domain" value="wang" checked> 王家人物</label>
-                        <label><input type="checkbox" name="domain" value="lin" checked> 林家人物</label>
-                        <label><input type="checkbox" name="domain" value="shi" checked> 史家人物</label>
-                        <label><input type="checkbox" name="domain" value="xue" checked> 薛家人物</label>
-                        <label><input type="checkbox" name="domain" value="other" checked> 其他关联人物</label>
-                    </div>
-                </div>
-                
-                <div class="control-section">
-                    <h3>关系类型筛选</h3>
-                    <div class="filter-options" id="relation-filters">
-                        <!-- 关系类型筛选将动态生成 -->
-                    </div>
-                </div>
-                
-                <div class="control-section">
-                    <h3>图谱操作</h3>
-                    <div class="filter-options" id="graph-controls">
-                        <label><input type="checkbox" id="show-links" checked> 显示连接线</label>
-                        <label><input type="checkbox" id="show-labels" checked> 显示标签</label>
-                        <label><input type="checkbox" id="show-link-labels"> 显示关系标签</label>
-                        <label><input type="checkbox" id="auto-layout" checked> 自动布局</label>
-                    </div>
-                </div>
-                
-                <div class="control-section">
-                    <h3>节点图例</h3>
-                    <div class="legend">
-                        <div class="legend-item">
-                            <div class="legend-star"><i class="fas fa-star"></i></div>
-                            <span>总览节点</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #f4a261;"></div>
-                            <span>家族分支</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #f77f00;"></div>
-                            <span>宁国府人物</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #2a9d8f;"></div>
-                            <span>荣国府人物</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #8ecae6;"></div>
-                            <span>王家人物</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #6a4c93;"></div>
-                            <span>林家人物</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #ffb703;"></div>
-                            <span>史家人物</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #264653;"></div>
-                            <span>薛家人物</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #adb5bd;"></div>
-                            <span>其他关联人物</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="control-section">
-                    <h3>关系图例</h3>
-                    <div class="relation-legend" id="relation-legend">
-                        <!-- 关系图例将动态生成 -->
-                    </div>
-                </div>
-            </div>
-            
-            <div class="graph-container">
-                <svg id="knowledge-graph"></svg>
-                <div class="toolbar">
-                    <button id="zoom-in"><i class="fas fa-search-plus"></i></button>
-                    <button id="zoom-out"><i class="fas fa-search-minus"></i></button>
-                    <button id="reset-view"><i class="fas fa-sync-alt"></i></button>
-                    <button id="center-graph"><i class="fas fa-expand"></i></button>
-                </div>
-                <div class="node-details">
-                    <span class="close-details">&times;</span>
-                    <h2 id="detail-title">节点标题</h2>
-                    <div class="detail-section">
-                        <h4>类型</h4>
-                        <p id="detail-type">节点类型</p>
-                    </div>
-                    <div class="detail-section">
-                        <h4>描述</h4>
-                        <p id="detail-description">节点描述内容将显示在这里...</p>
-                    </div>
-                    <div class="detail-section">
-                        <h4>相关节点</h4>
-                        <div class="related-nodes" id="related-nodes">
-                            <!-- 相关节点链接将在这里动态生成 -->
-                        </div>
-                    </div>
-                    <div class="detail-section">
-                        <h4>人物小传</h4>
-                        <div class="bio-list" id="bio-list">
-                            <!-- 人物介绍将在这里动态生成 -->
-                        </div>
-                    </div>
-                </div>
+<div class="app">
+    <header>
+        <div class="title-block">
+            <div class="badge">实时交互 · 手势驱动 · Three.js</div>
+            <h1>3D 粒子系统 · 手势舞台</h1>
+            <p>张开手掌扩散粒子，握紧手掌收缩聚焦。实时捕捉手势驱动形态与颜色，探索心跳般的粒子雕塑。</p>
+        </div>
+        <button class="primary" id="fullscreen">⛶ 全屏展示</button>
+    </header>
+
+    <main>
+        <div class="canvas-wrap" id="stage">
+            <canvas id="scene" class="canvas-surface"></canvas>
+            <div class="hud">
+                <div class="chip">手势状态：<strong id="gestureLabel">等待手势…</strong></div>
+                <div class="chip">粒子数量：<strong id="particleCount">-</strong></div>
             </div>
         </div>
-    </div>
 
-    <script>
-        // 根据《红楼梦》人物关系整理节点与连线数据，并补充根节点与家族分支
-        const graphData = {
-            nodes: [
-{id: 0, name: "红楼梦人物关系图谱", type: "root", description: "以《红楼梦》主要人物及其亲属、婚姻、仆役等关系构建的互动式知识图谱。"},
-                {id: 1, name: "其他", type: "family", description: "来自书中其他势力或出身的角色集合。"},
-                {id: 2, name: "史家", type: "family", description: "史氏家族节点。"},
-                {id: 3, name: "林家", type: "family", description: "林氏家族节点。"},
-                {id: 4, name: "王家", type: "family", description: "王氏家族节点。"},
-                {id: 5, name: "薛家", type: "family", description: "薛氏家族节点。"},
-                {id: 6, name: "贾家宁国府", type: "family", description: "贾氏宁国府一支的家族节点。"},
-                {id: 7, name: "贾家荣国府", type: "family", description: "贾氏荣国府一支的家族节点。"},
-                {id: 8, name: "佩凤", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 9, name: "偕鸾", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 10, name: "傻大姐", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 11, name: "入画", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 12, name: "冷子兴", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 13, name: "刘姥姥", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 14, name: "史湘云", type: "shi", description: "《红楼梦》中来自史家的角色。"},
-                {id: 15, name: "吴贵", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 16, name: "周瑞家的", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 17, name: "四儿", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 18, name: "坠儿", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 19, name: "夏金桂", type: "xue", description: "《红楼梦》中来自薛家的角色。"},
-                {id: 20, name: "妙玉", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 21, name: "娇杏", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 22, name: "孙绍祖", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 23, name: "宝珠", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 24, name: "宝蟾", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 25, name: "封肃", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 26, name: "尤三姐", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 27, name: "尤二姐", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 28, name: "尤氏", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 29, name: "尤氏继母", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 30, name: "巧姐", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 31, name: "彩云", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 32, name: "彩霞", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 33, name: "晴雯", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 34, name: "智能儿", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 35, name: "李嬷嬷", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 36, name: "李纨", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 37, name: "李贵", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 38, name: "林之孝", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 39, name: "林之孝家的", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 40, name: "林如海", type: "lin", description: "《红楼梦》中来自林家的角色。"},
-                {id: 41, name: "林红玉", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 42, name: "林黛玉", type: "lin", description: "《红楼梦》中来自林家的角色。"},
-                {id: 43, name: "柳五儿", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 44, name: "柳湘莲", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 45, name: "焦大", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 46, name: "玉钏儿", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 47, name: "王善保家的", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 48, name: "王夫人", type: "wang", description: "《红楼梦》中来自王家的角色。"},
-                {id: 49, name: "王子腾", type: "wang", description: "《红楼梦》中来自王家的角色。"},
-                {id: 50, name: "王熙凤", type: "wang", description: "《红楼梦》中来自王家的角色。"},
-                {id: 51, name: "王狗儿", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 52, name: "瑞珠", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 53, name: "甄士隐", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 54, name: "甄宝玉", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 55, name: "甄应嘉", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 56, name: "秋桐", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 57, name: "秋纹", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 58, name: "秦可卿", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 59, name: "秦邦业", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 60, name: "秦钟", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 61, name: "紫鹃", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 62, name: "芳官", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 63, name: "茗烟", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 64, name: "药官", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 65, name: "莺儿", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 66, name: "蒋玉菡", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 67, name: "薛姨妈", type: "wang", description: "《红楼梦》中来自王家的角色。"},
-                {id: 68, name: "薛宝琴", type: "xue", description: "《红楼梦》中来自薛家的角色。"},
-                {id: 69, name: "薛宝钗", type: "xue", description: "《红楼梦》中来自薛家的角色。"},
-                {id: 70, name: "薛蝌", type: "xue", description: "《红楼梦》中来自薛家的角色。"},
-                {id: 71, name: "薛蟠", type: "xue", description: "《红楼梦》中来自薛家的角色。"},
-                {id: 72, name: "藕官", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 73, name: "袭人", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 74, name: "贾代化", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 75, name: "贾代善", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 76, name: "贾元春", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 77, name: "贾兰", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 78, name: "贾宝玉", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 79, name: "贾惜春", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 80, name: "贾探春", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 81, name: "贾政", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 82, name: "贾敏", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 83, name: "贾敬", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 84, name: "贾母", type: "shi", description: "《红楼梦》中来自史家的角色。"},
-                {id: 85, name: "贾源", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 86, name: "贾演", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 87, name: "贾环", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 88, name: "贾珍", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 89, name: "贾珠", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 90, name: "贾琏", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 91, name: "贾蓉", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 92, name: "贾蔷", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 93, name: "贾赦", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 94, name: "贾迎春", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 95, name: "贾雨村", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 96, name: "赖大", type: "ning", description: "《红楼梦》中来自贾家宁国府的角色。"},
-                {id: 97, name: "赖嬷嬷", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 98, name: "赖尚荣", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 99, name: "赵姨娘", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 100, name: "邢夫人", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 101, name: "邢岫烟", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 102, name: "邢忠", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 103, name: "金文翔", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 104, name: "金文翔家的", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 105, name: "金钏", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 106, name: "金钏儿", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 107, name: "雪雁", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 108, name: "香菱", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 109, name: "马道婆", type: "other", description: "《红楼梦》中来自不同势力的角色。"},
-                {id: 110, name: "鸳鸯", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 111, name: "麝月", type: "rong", description: "《红楼梦》中来自贾家荣国府的角色。"},
-                {id: 112, name: "龄官", type: "other", description: "《红楼梦》中来自不同势力的角色。"}
-            ],
-            links: [
-{source: 0, target: 1, relation: "分支", type: "分支"},
-                {source: 0, target: 2, relation: "分支", type: "分支"},
-                {source: 0, target: 3, relation: "分支", type: "分支"},
-                {source: 0, target: 4, relation: "分支", type: "分支"},
-                {source: 0, target: 5, relation: "分支", type: "分支"},
-                {source: 0, target: 6, relation: "分支", type: "分支"},
-                {source: 0, target: 7, relation: "分支", type: "分支"},
-                {source: 6, target: 8, relation: "成员", type: "成员"},
-                {source: 6, target: 9, relation: "成员", type: "成员"},
-                {source: 1, target: 10, relation: "成员", type: "成员"},
-                {source: 6, target: 11, relation: "成员", type: "成员"},
-                {source: 1, target: 12, relation: "成员", type: "成员"},
-                {source: 1, target: 13, relation: "成员", type: "成员"},
-                {source: 2, target: 14, relation: "成员", type: "成员"},
-                {source: 1, target: 15, relation: "成员", type: "成员"},
-                {source: 1, target: 16, relation: "成员", type: "成员"},
-                {source: 7, target: 17, relation: "成员", type: "成员"},
-                {source: 7, target: 18, relation: "成员", type: "成员"},
-                {source: 5, target: 19, relation: "成员", type: "成员"},
-                {source: 1, target: 20, relation: "成员", type: "成员"},
-                {source: 1, target: 21, relation: "成员", type: "成员"},
-                {source: 1, target: 22, relation: "成员", type: "成员"},
-                {source: 6, target: 23, relation: "成员", type: "成员"},
-                {source: 1, target: 24, relation: "成员", type: "成员"},
-                {source: 1, target: 25, relation: "成员", type: "成员"},
-                {source: 6, target: 26, relation: "成员", type: "成员"},
-                {source: 6, target: 27, relation: "成员", type: "成员"},
-                {source: 6, target: 28, relation: "成员", type: "成员"},
-                {source: 6, target: 29, relation: "成员", type: "成员"},
-                {source: 7, target: 30, relation: "成员", type: "成员"},
-                {source: 7, target: 31, relation: "成员", type: "成员"},
-                {source: 7, target: 32, relation: "成员", type: "成员"},
-                {source: 7, target: 33, relation: "成员", type: "成员"},
-                {source: 1, target: 34, relation: "成员", type: "成员"},
-                {source: 1, target: 35, relation: "成员", type: "成员"},
-                {source: 7, target: 36, relation: "成员", type: "成员"},
-                {source: 1, target: 37, relation: "成员", type: "成员"},
-                {source: 1, target: 38, relation: "成员", type: "成员"},
-                {source: 1, target: 39, relation: "成员", type: "成员"},
-                {source: 3, target: 40, relation: "成员", type: "成员"},
-                {source: 1, target: 41, relation: "成员", type: "成员"},
-                {source: 3, target: 42, relation: "成员", type: "成员"},
-                {source: 7, target: 43, relation: "成员", type: "成员"},
-                {source: 1, target: 44, relation: "成员", type: "成员"},
-                {source: 6, target: 45, relation: "成员", type: "成员"},
-                {source: 7, target: 46, relation: "成员", type: "成员"},
-                {source: 1, target: 47, relation: "成员", type: "成员"},
-                {source: 4, target: 48, relation: "成员", type: "成员"},
-                {source: 4, target: 49, relation: "成员", type: "成员"},
-                {source: 4, target: 50, relation: "成员", type: "成员"},
-                {source: 1, target: 51, relation: "成员", type: "成员"},
-                {source: 6, target: 52, relation: "成员", type: "成员"},
-                {source: 1, target: 53, relation: "成员", type: "成员"},
-                {source: 1, target: 54, relation: "成员", type: "成员"},
-                {source: 1, target: 55, relation: "成员", type: "成员"},
-                {source: 7, target: 56, relation: "成员", type: "成员"},
-                {source: 7, target: 57, relation: "成员", type: "成员"},
-                {source: 6, target: 58, relation: "成员", type: "成员"},
-                {source: 1, target: 59, relation: "成员", type: "成员"},
-                {source: 1, target: 60, relation: "成员", type: "成员"},
-                {source: 7, target: 61, relation: "成员", type: "成员"},
-                {source: 7, target: 62, relation: "成员", type: "成员"},
-                {source: 7, target: 63, relation: "成员", type: "成员"},
-                {source: 1, target: 64, relation: "成员", type: "成员"},
-                {source: 1, target: 65, relation: "成员", type: "成员"},
-                {source: 1, target: 66, relation: "成员", type: "成员"},
-                {source: 4, target: 67, relation: "成员", type: "成员"},
-                {source: 5, target: 68, relation: "成员", type: "成员"},
-                {source: 5, target: 69, relation: "成员", type: "成员"},
-                {source: 5, target: 70, relation: "成员", type: "成员"},
-                {source: 5, target: 71, relation: "成员", type: "成员"},
-                {source: 1, target: 72, relation: "成员", type: "成员"},
-                {source: 7, target: 73, relation: "成员", type: "成员"},
-                {source: 6, target: 74, relation: "成员", type: "成员"},
-                {source: 7, target: 75, relation: "成员", type: "成员"},
-                {source: 7, target: 76, relation: "成员", type: "成员"},
-                {source: 7, target: 77, relation: "成员", type: "成员"},
-                {source: 7, target: 78, relation: "成员", type: "成员"},
-                {source: 6, target: 79, relation: "成员", type: "成员"},
-                {source: 7, target: 80, relation: "成员", type: "成员"},
-                {source: 7, target: 81, relation: "成员", type: "成员"},
-                {source: 7, target: 82, relation: "成员", type: "成员"},
-                {source: 6, target: 83, relation: "成员", type: "成员"},
-                {source: 2, target: 84, relation: "成员", type: "成员"},
-                {source: 7, target: 85, relation: "成员", type: "成员"},
-                {source: 6, target: 86, relation: "成员", type: "成员"},
-                {source: 7, target: 87, relation: "成员", type: "成员"},
-                {source: 6, target: 88, relation: "成员", type: "成员"},
-                {source: 7, target: 89, relation: "成员", type: "成员"},
-                {source: 7, target: 90, relation: "成员", type: "成员"},
-                {source: 6, target: 91, relation: "成员", type: "成员"},
-                {source: 6, target: 92, relation: "成员", type: "成员"},
-                {source: 7, target: 93, relation: "成员", type: "成员"},
-                {source: 7, target: 94, relation: "成员", type: "成员"},
-                {source: 1, target: 95, relation: "成员", type: "成员"},
-                {source: 6, target: 96, relation: "成员", type: "成员"},
-                {source: 1, target: 97, relation: "成员", type: "成员"},
-                {source: 1, target: 98, relation: "成员", type: "成员"},
-                {source: 7, target: 99, relation: "成员", type: "成员"},
-                {source: 7, target: 100, relation: "成员", type: "成员"},
-                {source: 1, target: 101, relation: "成员", type: "成员"},
-                {source: 1, target: 102, relation: "成员", type: "成员"},
-                {source: 1, target: 103, relation: "成员", type: "成员"},
-                {source: 1, target: 104, relation: "成员", type: "成员"},
-                {source: 7, target: 105, relation: "成员", type: "成员"},
-                {source: 7, target: 106, relation: "成员", type: "成员"},
-                {source: 7, target: 107, relation: "成员", type: "成员"},
-                {source: 1, target: 108, relation: "成员", type: "成员"},
-                {source: 1, target: 109, relation: "成员", type: "成员"},
-                {source: 7, target: 110, relation: "成员", type: "成员"},
-                {source: 7, target: 111, relation: "成员", type: "成员"},
-                {source: 1, target: 112, relation: "成员", type: "成员"},
-                {source: 86, target: 74, relation: "父亲", type: "父亲"},
-                {source: 74, target: 86, relation: "儿子", type: "儿子"},
-                {source: 83, target: 74, relation: "儿子", type: "儿子"},
-                {source: 74, target: 83, relation: "父亲", type: "父亲"},
-                {source: 45, target: 86, relation: "老奴", type: "老奴"},
-                {source: 86, target: 45, relation: "主人", type: "主人"},
-                {source: 88, target: 83, relation: "儿子", type: "儿子"},
-                {source: 83, target: 88, relation: "父亲", type: "父亲"},
-                {source: 28, target: 88, relation: "妻", type: "妻"},
-                {source: 88, target: 28, relation: "丈夫", type: "丈夫"},
-                {source: 8, target: 88, relation: "妾", type: "妾"},
-                {source: 9, target: 88, relation: "妾", type: "妾"},
-                {source: 91, target: 88, relation: "儿子", type: "儿子"},
-                {source: 88, target: 91, relation: "父亲", type: "父亲"},
-                {source: 58, target: 91, relation: "妻", type: "妻"},
-                {source: 91, target: 58, relation: "丈夫", type: "丈夫"},
-                {source: 52, target: 58, relation: "丫环", type: "丫环"},
-                {source: 23, target: 58, relation: "丫环", type: "丫环"},
-                {source: 11, target: 79, relation: "丫环", type: "丫环"},
-                {source: 88, target: 79, relation: "父亲", type: "父亲"},
-                {source: 79, target: 88, relation: "女儿", type: "女儿"},
-                {source: 28, target: 79, relation: "母亲", type: "母亲"},
-                {source: 79, target: 28, relation: "女儿", type: "女儿"},
-                {source: 85, target: 75, relation: "父亲", type: "父亲"},
-                {source: 86, target: 85, relation: "兄弟", type: "兄弟"},
-                {source: 75, target: 85, relation: "儿子", type: "儿子"},
-                {source: 84, target: 75, relation: "妻", type: "妻"},
-                {source: 75, target: 84, relation: "丈夫", type: "丈夫"},
-                {source: 75, target: 81, relation: "父亲", type: "父亲"},
-                {source: 81, target: 75, relation: "儿子", type: "儿子"},
-                {source: 75, target: 93, relation: "父亲", type: "父亲"},
-                {source: 93, target: 75, relation: "儿子", type: "儿子"},
-                {source: 93, target: 84, relation: "儿子", type: "儿子"},
-                {source: 84, target: 93, relation: "母亲", type: "母亲"},
-                {source: 100, target: 93, relation: "妻", type: "妻"},
-                {source: 93, target: 100, relation: "丈夫", type: "丈夫"},
-                {source: 100, target: 84, relation: "大儿媳", type: "大儿媳"},
-                {source: 84, target: 100, relation: "婆婆", type: "婆婆"},
-                {source: 81, target: 84, relation: "儿子", type: "儿子"},
-                {source: 48, target: 84, relation: "小儿媳", type: "小儿媳"},
-                {source: 110, target: 84, relation: "丫头", type: "丫头"},
-                {source: 40, target: 82, relation: "丈夫", type: "丈夫"},
-                {source: 82, target: 40, relation: "妻", type: "妻"},
-                {source: 40, target: 42, relation: "父亲", type: "父亲"},
-                {source: 42, target: 40, relation: "女儿", type: "女儿"},
-                {source: 82, target: 42, relation: "母亲", type: "母亲"},
-                {source: 84, target: 42, relation: "外祖母", type: "外祖母"},
-                {source: 42, target: 84, relation: "外孙女", type: "外孙女"},
-                {source: 61, target: 84, relation: "丫头", type: "丫头"},
-                {source: 107, target: 42, relation: "丫头", type: "丫头"},
-                {source: 50, target: 100, relation: "儿媳", type: "儿媳"},
-                {source: 100, target: 50, relation: "婆婆", type: "婆婆"},
-                {source: 56, target: 93, relation: "丫环", type: "丫环"},
-                {source: 56, target: 93, relation: "妾", type: "妾"},
-                {source: 90, target: 93, relation: "儿子", type: "儿子"},
-                {source: 93, target: 90, relation: "父亲", type: "父亲"},
-                {source: 50, target: 90, relation: "妻", type: "妻"},
-                {source: 90, target: 50, relation: "丈夫", type: "丈夫"},
-                {source: 94, target: 93, relation: "女儿", type: "女儿"},
-                {source: 93, target: 94, relation: "父亲", type: "父亲"},
-                {source: 94, target: 22, relation: "妻", type: "妻"},
-                {source: 30, target: 50, relation: "女儿", type: "女儿"},
-                {source: 30, target: 90, relation: "女儿", type: "女儿"},
-                {source: 30, target: 13, relation: "被抚养", type: "被抚养"},
-                {source: 90, target: 30, relation: "父亲", type: "父亲"},
-                {source: 50, target: 30, relation: "母亲", type: "母亲"},
-                {source: 50, target: 48, relation: "内侄女", type: "内侄女"},
-                {source: 27, target: 29, relation: "女儿", type: "女儿"},
-                {source: 27, target: 90, relation: "二房", type: "二房"},
-                {source: 48, target: 81, relation: "妻", type: "妻"},
-                {source: 81, target: 48, relation: "丈夫", type: "丈夫"},
-                {source: 99, target: 81, relation: "妾", type: "妾"},
-                {source: 48, target: 67, relation: "姐妹", type: "姐妹"},
-                {source: 67, target: 48, relation: "姐妹", type: "姐妹"},
-                {source: 105, target: 48, relation: "大丫环", type: "大丫环"},
-                {source: 31, target: 48, relation: "大丫头", type: "大丫头"},
-                {source: 32, target: 48, relation: "大丫头", type: "大丫头"},
-                {source: 46, target: 106, relation: "妹妹", type: "妹妹"},
-                {source: 106, target: 46, relation: "姐姐", type: "姐姐"},
-                {source: 46, target: 48, relation: "丫头", type: "丫头"},
-                {source: 89, target: 48, relation: "儿子", type: "儿子"},
-                {source: 89, target: 81, relation: "儿子", type: "儿子"},
-                {source: 48, target: 89, relation: "母亲", type: "母亲"},
-                {source: 81, target: 89, relation: "父亲", type: "父亲"},
-                {source: 89, target: 36, relation: "丈夫", type: "丈夫"},
-                {source: 36, target: 89, relation: "妻", type: "妻"},
-                {source: 77, target: 89, relation: "儿子", type: "儿子"},
-                {source: 77, target: 36, relation: "儿子", type: "儿子"},
-                {source: 76, target: 81, relation: "女儿", type: "女儿"},
-                {source: 81, target: 76, relation: "父亲", type: "父亲"},
-                {source: 76, target: 48, relation: "女儿", type: "女儿"},
-                {source: 48, target: 76, relation: "母亲", type: "母亲"},
-                {source: 78, target: 81, relation: "儿子", type: "儿子"},
-                {source: 81, target: 78, relation: "父亲", type: "父亲"},
-                {source: 76, target: 78, relation: "姐姐", type: "姐姐"},
-                {source: 78, target: 48, relation: "儿子", type: "儿子"},
-                {source: 48, target: 78, relation: "母亲", type: "母亲"},
-                {source: 78, target: 69, relation: "丈夫", type: "丈夫"},
-                {source: 69, target: 78, relation: "妻", type: "妻"},
-                {source: 71, target: 69, relation: "哥哥", type: "哥哥"},
-                {source: 69, target: 71, relation: "妹妹", type: "妹妹"},
-                {source: 69, target: 67, relation: "女儿", type: "女儿"},
-                {source: 48, target: 69, relation: "姨母", type: "姨母"},
-                {source: 69, target: 48, relation: "外甥女", type: "外甥女"},
-                {source: 73, target: 78, relation: "丫环", type: "丫环"},
-                {source: 111, target: 78, relation: "丫环", type: "丫环"},
-                {source: 57, target: 78, relation: "丫环", type: "丫环"},
-                {source: 33, target: 78, relation: "丫环", type: "丫环"},
-                {source: 18, target: 78, relation: "丫环", type: "丫环"},
-                {source: 17, target: 78, relation: "丫环", type: "丫环"},
-                {source: 43, target: 62, relation: "好朋友", type: "好朋友"},
-                {source: 43, target: 78, relation: "丫环", type: "丫环"},
-                {source: 63, target: 78, relation: "小厮", type: "小厮"},
-                {source: 87, target: 81, relation: "儿子", type: "儿子"},
-                {source: 81, target: 87, relation: "父亲", type: "父亲"},
-                {source: 87, target: 99, relation: "儿子", type: "儿子"},
-                {source: 99, target: 87, relation: "母亲", type: "母亲"},
-                {source: 80, target: 81, relation: "女儿", type: "女儿"},
-                {source: 81, target: 80, relation: "父亲", type: "父亲"},
-                {source: 80, target: 99, relation: "女儿", type: "女儿"},
-                {source: 99, target: 80, relation: "母亲", type: "母亲"},
-                {source: 92, target: 88, relation: "养子", type: "养子"},
-                {source: 103, target: 110, relation: "哥哥", type: "哥哥"},
-                {source: 103, target: 84, relation: "买办", type: "买办"},
-                {source: 104, target: 110, relation: "嫂子", type: "嫂子"},
-                {source: 16, target: 48, relation: "陪房", type: "陪房"},
-                {source: 47, target: 100, relation: "陪房", type: "陪房"},
-                {source: 38, target: 41, relation: "父", type: "父"},
-                {source: 39, target: 41, relation: "母", type: "母"},
-                {source: 35, target: 78, relation: "乳母", type: "乳母"},
-                {source: 35, target: 37, relation: "母", type: "母"},
-                {source: 10, target: 84, relation: "丫头", type: "丫头"},
-                {source: 62, target: 78, relation: "丫环", type: "丫环"},
-                {source: 112, target: 92, relation: "相好", type: "相好"},
-                {source: 72, target: 64, relation: "相好", type: "相好"},
-                {source: 72, target: 42, relation: "丫环", type: "丫环"},
-                {source: 97, target: 96, relation: "母亲", type: "母亲"},
-                {source: 98, target: 97, relation: "孙子", type: "孙子"},
-                {source: 15, target: 33, relation: "姑舅哥哥", type: "姑舅哥哥"},
-                {source: 71, target: 67, relation: "儿子", type: "儿子"},
-                {source: 67, target: 71, relation: "母亲", type: "母亲"},
-                {source: 70, target: 67, relation: "侄儿", type: "侄儿"},
-                {source: 101, target: 70, relation: "妻", type: "妻"},
-                {source: 68, target: 67, relation: "侄女", type: "侄女"},
-                {source: 67, target: 68, relation: "姑母", type: "姑母"},
-                {source: 68, target: 70, relation: "胞妹", type: "胞妹"},
-                {source: 19, target: 71, relation: "妻", type: "妻"},
-                {source: 108, target: 71, relation: "妾", type: "妾"},
-                {source: 108, target: 53, relation: "女儿", type: "女儿"},
-                {source: 53, target: 108, relation: "父亲", type: "父亲"},
-                {source: 24, target: 19, relation: "陪房丫头", type: "陪房丫头"},
-                {source: 101, target: 102, relation: "女儿", type: "女儿"},
-                {source: 101, target: 100, relation: "侄女", type: "侄女"},
-                {source: 65, target: 69, relation: "丫头", type: "丫头"},
-                {source: 13, target: 51, relation: "岳母", type: "岳母"},
-                {source: 95, target: 42, relation: "老师", type: "老师"},
-                {source: 21, target: 95, relation: "二夫人", type: "二夫人"},
-                {source: 25, target: 53, relation: "岳父", type: "岳父"},
-                {source: 54, target: 55, relation: "儿子", type: "儿子"},
-                {source: 20, target: 42, relation: "朋友", type: "朋友"},
-                {source: 20, target: 78, relation: "朋友", type: "朋友"},
-                {source: 44, target: 71, relation: "好兄弟", type: "好兄弟"},
-                {source: 66, target: 78, relation: "好友", type: "好友"},
-                {source: 66, target: 73, relation: "夫妻", type: "夫妻"},
-                {source: 12, target: 16, relation: "女婿", type: "女婿"},
-                {source: 12, target: 95, relation: "好友", type: "好友"},
-                {source: 109, target: 78, relation: "乾娘", type: "乾娘"},
-                {source: 34, target: 60, relation: "暧昧", type: "暧昧"},
-                {source: 26, target: 29, relation: "女儿", type: "女儿"},
-                {source: 26, target: 27, relation: "妹妹", type: "妹妹"},
-                {source: 60, target: 59, relation: "儿子", type: "儿子"},
-                {source: 59, target: 60, relation: "父亲", type: "父亲"},
-                {source: 59, target: 58, relation: "养父", type: "养父"},
-                {source: 14, target: 78, relation: "朋友", type: "朋友"},
-                {source: 14, target: 42, relation: "朋友", type: "朋友"},
-                {source: 14, target: 69, relation: "朋友", type: "朋友"},
-                {source: 14, target: 84, relation: "孙女", type: "孙女"},
-                {source: 49, target: 50, relation: "伯父", type: "伯父"},
-                {source: 78, target: 42, relation: "表兄妹", type: "表兄妹"},
-                {source: 42, target: 78, relation: "表兄妹", type: "表兄妹"},
-                {source: 36, target: 78, relation: "嫂子", type: "嫂子"},
-                {source: 89, target: 78, relation: "哥哥", type: "哥哥"},
-                {source: 82, target: 84, relation: "女儿", type: "女儿"},
-                {source: 82, target: 81, relation: "兄妹", type: "兄妹"},
-                {source: 82, target: 93, relation: "兄妹", type: "兄妹"},
-                {source: 81, target: 93, relation: "兄弟", type: "兄弟"},
-                {source: 78, target: 89, relation: "弟弟", type: "弟弟"},
-                {source: 75, target: 78, relation: "爷爷", type: "爷爷"},
-                {source: 78, target: 75, relation: "孙子", type: "孙子"},
-                {source: 84, target: 78, relation: "奶奶", type: "奶奶"},
-                {source: 60, target: 78, relation: "朋友", type: "朋友"}
-            ]
-        };
+        <aside class="panel">
+            <div>
+                <h2>U 控制面板</h2>
+                <p class="hint">选择模型、调色，打开摄像头后用手势控制粒子缩放与扩散。</p>
+            </div>
 
-        const characterProfiles = {
-            "红楼梦人物关系图谱": {
-                description: "汇集《红楼梦》中贾府与王、史、林、薛等家族的核心人物、亲缘与社交网络。",
-                highlights: [
-                    "囊括金陵四大家族及其亲友、侍从，呈现贾府盛衰与人情世态。",
-                    "结合血缘、婚配、师友等多重关系，支持交互探索大观园社交圈。"
-                ]
-            },
-            "其他": {
-                description: "贾府之外与诸人物发生交集的角色与外戚。",
-                highlights: [
-                    "包括戏班子、僧道、外姓亲友等与贾府往来密切的人物。",
-                    "帮助追踪故事在京城与乡野间的外部联系。"
-                ]
-            },
-            "史家": {
-                description: "史太君的娘家——金陵史氏，亦是金陵四大家族之一。",
-                highlights: [
-                    "史湘云等晚辈常在贾府出入，见证史、贾两家姻亲。",
-                    "史氏以武将世家出身，与贾府互为依靠。"
-                ]
-            },
-            "林家": {
-                description: "苏州林家，为林黛玉父亲林如海一脉。",
-                highlights: [
-                    "林如海世代为江南大官，林黛玉幼失双亲后寄居贾府。",
-                    "林家与贾府情谊深厚，黛玉与宝玉、宝钗共同构成爱情主线。"
-                ]
-            },
-            "王家": {
-                description: "金陵王氏，王夫人、王熙凤与薛姨妈的娘家。",
-                highlights: [
-                    "王子腾在京为权贵，扶持贾府仕途。",
-                    "王氏诸女如王夫人、凤姐在荣国府掌家，左右府内兴衰。"
-                ]
-            },
-            "薛家": {
-                description: "富商薛氏，金陵四大家族之一，与王家姻亲相连。",
-                highlights: [
-                    "薛姨妈率薛蟠、薛宝钗入京寄居贾府，推动宝黛钗情节。",
-                    "薛家兼具商贾与军功背景，故事中常以豪奢风范出现。"
-                ]
-            },
-            "贾家宁国府": {
-                description: "贾氏世家长房所在，贾演、贾代化一脉。",
-                highlights: [
-                    "以贾珍为现任家主，府中人物多性格豪纵。",
-                    "宁国府与荣国府同住大观园，故事中常互相关联。"
-                ]
-            },
-            "贾家荣国府": {
-                description: "贾氏世家二房所在地，由贾代善一脉承袭。",
-                highlights: [
-                    "贾母、贾政、王夫人及贾宝玉等主要人物居住于此。",
-                    "荣府内女眷众多，大观园女儿国情节主要发生于此。"
-                ]
-            },
-            "佩凤": {
-                description: "宁国府贾珍所纳妾室之一。",
-                highlights: [
-                    "与偕鸾同为贾珍宠妾，受尤氏统摄。",
-                    "出入荣府宴饮场合，体现宁府奢华生活。"
-                ]
-            },
-            "偕鸾": {
-                description: "宁国府贾珍的侍妾，常伴其左右。",
-                highlights: [
-                    "与佩凤同侍贾珍，见证宁国府内宅情状。",
-                    "在尤氏主持的家庭事务中辅助打理。"
-                ]
-            },
-            "傻大姐": {
-                description: "贾母身边心直口快的老嬷嬷。",
-                highlights: [
-                    "以憨直著称，常在宴席间插科打诨。",
-                    "在凤姐设计巧姐脱险时充当送信人。"
-                ]
-            },
-            "入画": {
-                description: "贾惜春贴身丫鬟，性情沉静。",
-                highlights: [
-                    "随惜春常居大观园南苑，擅于绘画装裱。",
-                    "见证惜春最终入道远离红尘。"
-                ]
-            },
-            "冷子兴": {
-                description: "宁荣街上旧商人，洞悉贾府内幕。",
-                highlights: [
-                    "在第一回中向贾雨村详述贾氏家族，奠定故事背景。",
-                    "与周瑞家的成亲家，常往来贾府传递消息。"
-                ]
-            },
-            "刘姥姥": {
-                description: "乡间老妇，与王狗儿结亲，屡入荣府。",
-                highlights: [
-                    "三进荣国府，既受凤姐施舍也反哺巧姐。",
-                    "以质朴机智见长，是小说中的喜剧人物。"
-                ]
-            },
-            "史湘云": {
-                description: "史家千金，贾母侄孙女，直爽豪放。",
-                highlights: [
-                    "与林黛玉、薛宝钗交情深厚，常在诗社唱和。",
-                    "好骑射、爱饮酒，被贾母视作孙女疼爱。"
-                ]
-            },
-            "吴贵": {
-                description: "荣国府车夫，与晴雯有亲缘。",
-                highlights: [
-                    "晴雯称其为姑舅哥哥，偶来怡红院送物。",
-                    "反映贾府下层人等的亲族网络。"
-                ]
-            },
-            "周瑞家的": {
-                description: "王夫人身边得力陪房。",
-                highlights: [
-                    "负责传递贾府与外界信息，多次承担婚姻使者。",
-                    "与冷子兴为亲家，深谙府中规矩。"
-                ]
-            },
-            "四儿": {
-                description: "贾宝玉房中小丫头之一，后随袭人出嫁。",
-                highlights: [
-                    "性情乖巧，常替袭人照看怡红院杂务。",
-                    "随袭人嫁与蒋玉菡，得宝玉周全。"
-                ]
-            },
-            "坠儿": {
-                description: "贾宝玉房里小丫鬟，名字寓意寄托。",
-                highlights: [
-                    "为怡红院打理针线，常与麝月一同值夜。",
-                    "在抄检大观园时受牵连，后被遣出。"
-                ]
-            },
-            "夏金桂": {
-                description: "薛蟠之妻，性情悍厉。",
-                highlights: [
-                    "出身商贾之家，与薛蟠婚后屡起争端。",
-                    "纵使宝蟾陷害香菱，激化薛家内斗。"
-                ]
-            },
-            "妙玉": {
-                description: "出身名门的女尼，住持栊翠庵。",
-                highlights: [
-                    "洁癖孤傲，与宝玉、黛玉诗酒唱和。",
-                    "精于茶道，惜物如命，后被强人掳走。"
-                ]
-            },
-            "娇杏": {
-                description: "贾雨村所纳继室，出身平民。",
-                highlights: [
-                    "陪伴贾雨村宦途起伏，协助打理家务。",
-                    "与贾雨村旧情人甄英莲的命运形成对照。"
-                ]
-            },
-            "孙绍祖": {
-                description: "贾迎春被指配的夫婿，江南豪强。",
-                highlights: [
-                    "性情粗暴，娶迎春后横加虐待。",
-                    "其贪婪行径加速迎春香消玉殒。"
-                ]
-            },
-            "宝珠": {
-                description: "秦可卿房中得宠的丫鬟。",
-                highlights: [
-                    "与瑞珠一同侍奉秦可卿，熟悉宁国府内情。",
-                    "在秦可卿丧事中与众人奔忙。"
-                ]
-            },
-            "宝蟾": {
-                description: "夏金桂身边陪房丫头。",
-                highlights: [
-                    "受主子唆使陷害香菱，挑拨薛蟠夫妻。",
-                    "象征薛家内院争宠暗斗。"
-                ]
-            },
-            "封肃": {
-                description: "甄士隐岳父，乡间财主。",
-                highlights: [
-                    "娶女儿封氏于甄士隐，后家道中落。",
-                    "因兵火流离，暗示封建家族兴衰。"
-                ]
-            },
-            "尤三姐": {
-                description: "尤氏继母之女，性烈敢爱。",
-                highlights: [
-                    "与柳湘莲两情相悦，却因误会自刎殉情。",
-                    "其悲剧揭示宁国府风流背后的伤害。"
-                ]
-            },
-            "尤二姐": {
-                description: "尤氏继母次女，姿容出众。",
-                highlights: [
-                    "被贾琏纳为二房，遭王熙凤设计含恨而终。",
-                    "体现权谋与情感纠葛。"
-                ]
-            },
-            "尤氏": {
-                description: "宁国府贾珍之妻，掌理内宅。",
-                highlights: [
-                    "出身将门，手腕圆熟，维系宁府日常。",
-                    "对尤二姐、尤三姐情深，却难逆府中沉疴。"
-                ]
-            },
-            "尤氏继母": {
-                description: "尤二姐、尤三姐的继母，常与宁府往来。",
-                highlights: [
-                    "携女儿依附宁国府谋前程。",
-                    "其安排间接引发尤二姐入府风波。"
-                ]
-            },
-            "巧姐": {
-                description: "贾琏与王熙凤之女，乳名巧姐。",
-                highlights: [
-                    "幼年蒙刘姥姥救助，避过被卖厄运。",
-                    "象征凤姐母爱的复杂与觉醒。"
-                ]
-            },
-            "彩云": {
-                description: "王夫人身边大丫头之一。",
-                highlights: [
-                    "与彩霞一同伺候王夫人，处理内宅琐事。",
-                    "在抄检大观园时执行主母命令。"
-                ]
-            },
-            "彩霞": {
-                description: "王夫人贴身大丫头。",
-                highlights: [
-                    "与彩云搭档侍奉王夫人，性格稳重。",
-                    "屡随王夫人出入大观园传话。"
-                ]
-            },
-            "晴雯": {
-                description: "贾宝玉房内首席丫鬟，才貌兼备。",
-                highlights: [
-                    "以补裘妙技闻名，却因直言遭驱逐。",
-                    "病逝怡红院，引宝玉作《芙蓉女儿诔》。"
-                ]
-            },
-            "智能儿": {
-                description: "栊翠庵小尼姑，与秦钟暗生情愫。",
-                highlights: [
-                    "在贾宝玉入寺读书时与秦钟相识。",
-                    "因情感纠葛被逐出庵门，命运凄惶。"
-                ]
-            },
-            "李嬷嬷": {
-                description: "贾宝玉乳母，资历深厚。",
-                highlights: [
-                    "性情刻板，常担忧宝玉言行失礼。",
-                    "其子李贵亦在府中任差。"
-                ]
-            },
-            "李纨": {
-                description: "贾珠之妻，早寡守节。",
-                highlights: [
-                    "抚育贾兰成长，在大观园中主管稻香村。",
-                    "主持海棠诗社，象征贞静端方。"
-                ]
-            },
-            "李贵": {
-                description: "李嬷嬷之子，荣府内仆。",
-                highlights: [
-                    "在贾府驳车办差，待人忠厚。",
-                    "与母亲一同照料宝玉起居。"
-                ]
-            },
-            "林之孝": {
-                description: "荣国府总管家，掌管外务。",
-                highlights: [
-                    "管理田庄与外出事务，为贾母所信任。",
-                    "与妻子共同负责府中下人调度。"
-                ]
-            },
-            "林之孝家的": {
-                description: "林之孝之妻，荣府内务干事。",
-                highlights: [
-                    "掌管库房与丫鬟，执行王夫人吩咐。",
-                    "参与抄检大观园，行事谨慎。"
-                ]
-            },
-            "林如海": {
-                description: "林黛玉之父，江南巡盐御史。",
-                highlights: [
-                    "身居盐政要职，性格清正。",
-                    "病逝后托付黛玉入荣府寄居外祖母家。"
-                ]
-            },
-            "林红玉": {
-                description: "林之孝之女，在荣府出入办事。",
-                highlights: [
-                    "随父母服务贾府内外事务，受主母器重。",
-                    "与众丫鬟往来密切，反映管家家族的影响力。"
-                ]
-            },
-            "林黛玉": {
-                description: "金陵十二钗正册之一，才情横溢。",
-                highlights: [
-                    "工诗善琴，与贾宝玉情深意笃。",
-                    "体弱多病，敏感自尊，是大观园诗社灵魂。"
-                ]
-            },
-            "柳五儿": {
-                description: "贾府旧役之女，后为宝玉房中丫鬟。",
-                highlights: [
-                    "与芳官情谊深厚，曾被配给厨房柳家。",
-                    "因出言顶撞被逐，宝玉暗助其出府成亲。"
-                ]
-            },
-            "柳湘莲": {
-                description: "风流倜傥的游侠客，原为戏子。",
-                highlights: [
-                    "与薛蟠结拜兄弟，却因其恶行反目。",
-                    "与尤三姐相恋，误会后出家。"
-                ]
-            },
-            "焦大": {
-                description: "宁国府世仆，曾随贾演征战。",
-                highlights: [
-                    "性情直率，醉酒痛骂宁府败德。",
-                    "象征贾府老臣对家风堕落的控诉。"
-                ]
-            },
-            "玉钏儿": {
-                description: "王夫人身边大丫头，金钏儿之妹。",
-                highlights: [
-                    "稳重持家，后配与金陵商人。",
-                    "亲眼见证姐姐金钏儿投井的悲剧。"
-                ]
-            },
-            "王善保家的": {
-                description: "邢夫人陪房嬷嬷。",
-                highlights: [
-                    "与赵姨娘勾结，屡在王夫人前挑拨。",
-                    "参与抄检大观园，对怡红院严加搜查。"
-                ]
-            },
-            "王夫人": {
-                description: "荣国府主母，贾政正妻。",
-                highlights: [
-                    "王子腾之妹，主持内宅礼法。",
-                    "严厉维护宝玉名声，却常受赵姨娘等人掣肘。"
-                ]
-            },
-            "王子腾": {
-                description: "王夫人长兄，京城权臣。",
-                highlights: [
-                    "曾任兵部侍郎，扶持贾政仕途。",
-                    "其势力为贾府在朝堂的后盾。"
-                ]
-            },
-            "王熙凤": {
-                description: "王夫人侄女，贾琏之妻，精明强干。",
-                highlights: [
-                    "掌理宁、荣两府账目，被称“凤辣子”。",
-                    "心思机巧，既能济困亦能设局，如贾瑞、尤二姐事件。"
-                ]
-            },
-            "王狗儿": {
-                description: "刘姥姥女婿，乡村小贩。",
-                highlights: [
-                    "与刘姥姥同行入京，求助王夫人亲戚。",
-                    "其一家与巧姐结缘，体现草根义气。"
-                ]
-            },
-            "瑞珠": {
-                description: "秦可卿房里大丫鬟之一。",
-                highlights: [
-                    "与宝珠同侍秦可卿，性情沉稳。",
-                    "协助主子打理宁国府内务。"
-                ]
-            },
-            "甄士隐": {
-                description: "金陵甄府长者，故事开篇人物。",
-                highlights: [
-                    "女儿英莲被拐后辗转易名香菱，家道随之中落。",
-                    "遭火灾流落，与贾雨村相交甚笃。"
-                ]
-            },
-            "甄宝玉": {
-                description: "甄府公子，与贾宝玉互为映照。",
-                highlights: [
-                    "姓名与贾宝玉一真一假，构成小说的镜像伏笔。",
-                    "其家族兴衰与贾府相互参照，揭示荣华无常。"
-                ]
-            },
-            "甄应嘉": {
-                description: "甄宝玉之父，甄士隐长子。",
-                highlights: [
-                    "袭封应保公爵，家境与贾府相近。",
-                    "其家庭遭遇映射贾府命运。"
-                ]
-            },
-            "秋桐": {
-                description: "贾赦宠妾，兼任丫鬟。",
-                highlights: [
-                    "原为邢夫人身边人，被赦纳为妾。",
-                    "与邢夫人、赵姨娘之间互有争斗。"
-                ]
-            },
-            "秋纹": {
-                description: "贾宝玉房中四大丫鬟之一。",
-                highlights: [
-                    "言语伶俐，常与晴雯、袭人相伴。",
-                    "怡红院事务繁忙时协助打理。"
-                ]
-            },
-            "秦可卿": {
-                description: "宁国府世媳，贾蓉之妻，身世多谜。",
-                highlights: [
-                    "以温柔贤惠著称，早逝引发宁府丧事。",
-                    "临终托梦王熙凤提示贾府危机。"
-                ]
-            },
-            "秦邦业": {
-                description: "秦可卿义父，秦钟之父。",
-                highlights: [
-                    "家境殷实，收养秦可卿后与宁府结亲。",
-                    "早年与贾府往来密切。"
-                ]
-            },
-            "秦钟": {
-                description: "贾宝玉同学好友，秦邦业之子。",
-                highlights: [
-                    "与宝玉在私塾相识，情谊深厚。",
-                    "因恋慕智能儿，被逐后抑郁而亡。"
-                ]
-            },
-            "紫鹃": {
-                description: "原为贾母房内丫鬟，后陪伴林黛玉。",
-                highlights: [
-                    "聪慧体贴，常为黛玉分忧解愁。",
-                    "曾以假传噩耗试探黛玉心迹。"
-                ]
-            },
-            "芳官": {
-                description: "梨香院戏班小旦，后入怡红院。",
-                highlights: [
-                    "与柳五儿、藕官等情同姐妹。",
-                    "因护主心切顶撞王夫人被逐。"
-                ]
-            },
-            "茗烟": {
-                description: "贾宝玉贴身小厮。",
-                highlights: [
-                    "随宝玉读书玩耍，是怡红院得力助手。",
-                    "常为宝玉遮掩顽劣行径。"
-                ]
-            },
-            "药官": {
-                description: "梨香院女伶之一，与藕官情谊深。",
-                highlights: [
-                    "擅演武生，与藕官成对台柱。",
-                    "离开贾府后与藕官相依。"
-                ]
-            },
-            "莺儿": {
-                description: "薛宝钗贴身丫鬟，沉稳能干。",
-                highlights: [
-                    "负责薛家日常账务，与宝钗感情深。",
-                    "态度圆滑，善于与怡红院众人相处。"
-                ]
-            },
-            "蒋玉菡": {
-                description: "梨香院名伶，艺名蔷薇硝。",
-                highlights: [
-                    "与贾宝玉一见如故，互赠信物。",
-                    "后来与袭人结为夫妻，过起清淡日子。"
-                ]
-            },
-            "薛姨妈": {
-                description: "王夫人姐姐，薛蟠、薛宝钗之母。",
-                highlights: [
-                    "带子女进京借住荣府，与王家联系紧密。",
-                    "温厚慈祥，支持宝钗与宝玉婚事。"
-                ]
-            },
-            "薛宝琴": {
-                description: "薛姨妈侄女，薛蝌之妹。",
-                highlights: [
-                    "容貌才情兼备，曾在寿宴上题诗。",
-                    "北静王赞其风度，后许配中山浪将军。"
-                ]
-            },
-            "薛宝钗": {
-                description: "金陵十二钗正册之一，薛家千金。",
-                highlights: [
-                    "性情温婉稳重，善解人意。",
-                    "获金锁庇护，与贾宝玉成婚。",
-                    "与兄薛蟠性格迥异，常为家中调停纷争。"
-                ]
-            },
-            "薛蝌": {
-                description: "薛姨妈侄儿，薛蟠之堂弟。",
-                highlights: [
-                    "性格朴厚，娶邢岫烟为妻。",
-                    "在薛家经营盐业，颇有担当。"
-                ]
-            },
-            "薛蟠": {
-                description: "薛家长子，豪纵放浪。",
-                highlights: [
-                    "因拐骗杀人曾入狱，靠贾府斡旋脱身。",
-                    "娶夏金桂为妻，又纳香菱为妾。",
-                    "与妹妹薛宝钗不同，行事鲁莽常令母亲头疼。"
-                ]
-            },
-            "藕官": {
-                description: "梨香院名伶，与药官相互依偎。",
-                highlights: [
-                    "原属贾府家班，能歌善舞。",
-                    "离府后与药官相伴谋生。"
-                ]
-            },
-            "袭人": {
-                description: "贾宝玉最得信赖的丫鬟，后过继蒋玉菡。",
-                highlights: [
-                    "稳重体贴，常为宝玉遮掩过失。",
-                    "最终与蒋玉菡成婚，离开贾府。"
-                ]
-            },
-            "贾代化": {
-                description: "宁国府始祖之一，贾演之子。",
-                highlights: [
-                    "与兄贾源奠定贾氏两府根基。",
-                    "其后裔贾敬、贾珍掌管宁府。"
-                ]
-            },
-            "贾代善": {
-                description: "荣国府开基老祖，贾源之子。",
-                highlights: [
-                    "与贾代化并称两府二代。",
-                    "其子贾赦、贾政承续荣府香火。"
-                ]
-            },
-            "贾元春": {
-                description: "贾政长女，封为贤德妃。",
-                highlights: [
-                    "省亲回府时建造大观园，恩宠一时。",
-                    "后因政局波动病逝宫中。"
-                ]
-            },
-            "贾兰": {
-                description: "贾珠与李纨之子。",
-                highlights: [
-                    "在贾政教导下勤学，最终高中进士。",
-                    "象征贾府尚存的一线希望。"
-                ]
-            },
-            "贾宝玉": {
-                description: "荣国府贾政之子，金陵十二钗的情感中心。",
-                highlights: [
-                    "出生含通灵宝玉，被贾母疼爱。",
-                    "与林黛玉、薛宝钗形成爱情主线，崇尚儿女情长。"
-                ]
-            },
-            "贾惜春": {
-                description: "贾珍之女，金陵十二钗之一。",
-                highlights: [
-                    "年少孤僻，酷爱丹青。",
-                    "见惯世态炎凉，最终出家为尼。"
-                ]
-            },
-            "贾探春": {
-                description: "贾政庶女，机敏能干。",
-                highlights: [
-                    "主持海棠诗社，提出改革家政。",
-                    "后远嫁海外，象征才女被迫离乡。"
-                ]
-            },
-            "贾政": {
-                description: "荣国府当家，仕途严谨。",
-                highlights: [
-                    "官至工部尚书，性格刻板重科举。",
-                    "对宝玉既望子成龙又常训斥。"
-                ]
-            },
-            "贾敏": {
-                description: "贾代善幼女，林黛玉之母。",
-                highlights: [
-                    "嫁林如海为妻，孕育林黛玉。",
-                    "早逝，使黛玉寄居外祖家。"
-                ]
-            },
-            "贾敬": {
-                description: "贾代化之子，嗜道成癖。",
-                highlights: [
-                    "常在玄真观修炼，不理家务。",
-                    "将宁国府实权交由儿子贾珍掌握。"
-                ]
-            },
-            "贾母": {
-                description: "史太君，荣国府太君，贾氏族长。",
-                highlights: [
-                    "出身史家，德高望重，统领二府。",
-                    "疼爱孙辈，倡导大观园诗酒文会。"
-                ]
-            },
-            "贾源": {
-                description: "贾演之弟，荣国府一脉的承接者。",
-                highlights: [
-                    "与兄分支后定居荣府，世袭将军。",
-                    "其子贾代善传下荣府香火。"
-                ]
-            },
-            "贾演": {
-                description: "贾氏初代功臣，宁国公爵。",
-                highlights: [
-                    "开创贾氏荣华，封宁国公。",
-                    "其子孙延续宁国府血脉。"
-                ]
-            },
-            "贾环": {
-                description: "贾政与赵姨娘所出庶子。",
-                highlights: [
-                    "性情偏狭，常与宝玉不睦。",
-                    "受赵姨娘影响多行阴私。"
-                ]
-            },
-            "贾珍": {
-                description: "宁国府现任家主，贾敬之子。",
-                highlights: [
-                    "奢靡放荡，常与妻妾宴饮。",
-                    "掌控宁府军功世袭，权势显赫。"
-                ]
-            },
-            "贾珠": {
-                description: "贾政长子，早逝。",
-                highlights: [
-                    "娶李纨为妻，留有贾兰。",
-                    "其死让李纨守寡，宝玉得以承宠。"
-                ]
-            },
-            "贾琏": {
-                description: "贾赦之子，王熙凤之夫。",
-                highlights: [
-                    "掌管荣府外务，油滑圆通。",
-                    "好风流，暗娶尤二姐酿成风波。"
-                ]
-            },
-            "贾蓉": {
-                description: "贾珍之子，娶秦可卿。",
-                highlights: [
-                    "年纪轻轻便为宁府管家。",
-                    "与贾惜春同为尤氏子女，肩负宁府子弟责任。"
-                ]
-            },
-            "贾蔷": {
-                description: "贾珍养子，梨香院戏班的主管。",
-                highlights: [
-                    "负责带领小戏子，性格风流。",
-                    "与龄官互生情愫。"
-                ]
-            },
-            "贾赦": {
-                description: "贾代善长子，荣国府大老爷。",
-                highlights: [
-                    "好色奢侈，常与邢夫人意见相左。",
-                    "收秋桐为妾，索要鸳鸯未果。"
-                ]
-            },
-            "贾迎春": {
-                description: "贾赦庶女，性格懦弱。",
-                highlights: [
-                    "排行老二，绰号“二木头”。",
-                    "远嫁孙绍祖后受虐致死。"
-                ]
-            },
-            "贾雨村": {
-                description: "落魄秀才，后任知府。",
-                highlights: [
-                    "受甄士隐、贾府提携再登仕途。",
-                    "判案偏私，体现官场黑暗。"
-                ]
-            },
-            "赖大": {
-                description: "宁国府总管，赖嬷嬷之子。",
-                highlights: [
-                    "久任宁府管家，熟悉府中财务。",
-                    "家族世代为贾氏效力。"
-                ]
-            },
-            "赖嬷嬷": {
-                description: "宁国府老人，赖大之母。",
-                highlights: [
-                    "曾照顾贾演旧事，德高望重。",
-                    "孙子赖尚荣亦在府中行事。"
-                ]
-            },
-            "赖尚荣": {
-                description: "赖嬷嬷之孙，宁府小厮。",
-                highlights: [
-                    "随祖母常入内院办事。",
-                    "见证宁府奢靡生活。"
-                ]
-            },
-            "赵姨娘": {
-                description: "贾政妾室，贾环、贾探春之母。",
-                highlights: [
-                    "出身低微，常与王夫人、凤姐对立。",
-                    "怂恿贾环与宝玉作对。"
-                ]
-            },
-            "邢夫人": {
-                description: "贾赦正妻，性格保守。",
-                highlights: [
-                    "对王熙凤心存戒备，却又依赖其理家。",
-                    "常与王善保家的密谋，偏袒赵姨娘。"
-                ]
-            },
-            "邢岫烟": {
-                description: "贾府远房亲戚，性情柔婉。",
-                highlights: [
-                    "家境贫寒，被史湘云引荐入府。",
-                    "终嫁薛蝌，得以安稳生活。"
-                ]
-            },
-            "邢忠": {
-                description: "邢岫烟之父，邢夫人族兄。",
-                highlights: [
-                    "家道中落，将女儿托付贾府。",
-                    "与薛家联姻以改善境况。"
-                ]
-            },
-            "金文翔": {
-                description: "贾母门下买办，鸳鸯的兄长。",
-                highlights: [
-                    "负责采买府中物资，为贾母信赖。",
-                    "试图代家逼娶鸳鸯，被拒后离去。"
-                ]
-            },
-            "金文翔家的": {
-                description: "金文翔之妻，亦参与逼迫鸳鸯。",
-                highlights: [
-                    "随夫求娶鸳鸯未成，惹恼贾母。",
-                    "反映买办阶层对府中丫鬟的觊觎。"
-                ]
-            },
-            "金钏": {
-                description: "王夫人身边大丫鬟，玉钏儿之姐。",
-                highlights: [
-                    "与宝玉玩笑被王夫人误会，遂投井身亡。",
-                    "其死激化宝玉与王夫人矛盾。"
-                ]
-            },
-            "金钏儿": {
-                description: "王夫人贴身丫头“金钏”的俗称。",
-                highlights: [
-                    "与妹玉钏儿情同手足，共侍王夫人。",
-                    "其遭遇成为府中丫鬟命运的警示。"
-                ]
-            },
-            "雪雁": {
-                description: "林黛玉侍女，来自荣府。",
-                highlights: [
-                    "勤快聪明，替黛玉照料饮食。",
-                    "与紫鹃一同守护黛玉。"
-                ]
-            },
-            "香菱": {
-                description: "原名英莲，甄士隐之女，后为薛蟠妾。",
-                highlights: [
-                    "幼时被拐卖，经波折入薛家。",
-                    "在薛宝钗指导下学诗，与黛玉情深。"
-                ]
-            },
-            "马道婆": {
-                description: "荣府常用巫婆，自称贾宝玉干娘。",
-                highlights: [
-                    "与赵姨娘、王善保家的勾连害王熙凤。",
-                    "擅长符咒巫术，最终被发觉逐出。"
-                ]
-            },
-            "鸳鸯": {
-                description: "贾母最贴心的大丫鬟。",
-                highlights: [
-                    "誓守贞洁，拒嫁贾赦。",
-                    "侍奉贾母多年，深得信赖。"
-                ]
-            },
-            "麝月": {
-                description: "贾宝玉房里大丫鬟之一。",
-                highlights: [
-                    "性情温厚，善于安慰主子。",
-                    "与袭人共分担怡红院重担。"
-                ]
-            },
-            "龄官": {
-                description: "梨香院小伶，擅舞剑。",
-                highlights: [
-                    "与贾蔷互有情意。",
-                    "为秦可卿丧事献舞，技艺精湛。"
-                ]
-            }
-        };
+            <div class="control-group">
+                <label for="shapeSelect">模型选择</label>
+                <select id="shapeSelect">
+                    <option value="heart">爱心</option>
+                    <option value="flower">花朵</option>
+                    <option value="star">王星</option>
+                    <option value="buddha">佛像</option>
+                    <option value="firework">烟花</option>
+                </select>
+            </div>
 
-        graphData.nodes.forEach(node => {
-            const profile = characterProfiles[node.name];
-            if (profile) {
-                node.description = profile.description;
-                node.highlights = profile.highlights;
-            } else if (!node.description) {
-                node.description = '';
-            }
+            <div class="control-group">
+                <label for="colorPicker">粒子颜色</label>
+                <input type="color" id="colorPicker" value="#6cf0ff">
+            </div>
+
+            <div class="control-group">
+                <label>系统状态</label>
+                <ul class="status-list">
+                    <li class="status-item">摄像头 <span class="status-dot" id="cameraDot"></span></li>
+                    <li class="status-item">手势 <span class="status-dot" id="gestureDot"></span></li>
+                    <li class="status-item">实时响应 <span class="status-dot live"></span></li>
+                </ul>
+            </div>
+
+            <div class="control-group">
+                <div class="top-actions">
+                    <button class="ghost" id="startCameraBtn">启动摄像头</button>
+                    <button class="ghost" id="toggleVideo">显示手势画面</button>
+                </div>
+                <div class="top-actions">
+                    <button class="ghost" id="recenter">重新聚焦</button>
+                </div>
+                <p class="hint">· 首次点击“启动摄像头”以授权并开启手势捕捉<br>· 张开手掌：扩散并放大粒子<br>· 握紧手掌：收缩并聚合模型</p>
+            </div>
+
+            <div class="video-feed" id="videoBox">
+                <video id="input_video" muted playsinline></video>
+                <canvas class="output_canvas" id="output_canvas"></canvas>
+            </div>
+        </aside>
+    </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x05060b, 0.16);
+
+const camera = new THREE.PerspectiveCamera(55, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+camera.position.set(0, 0.6, 3.6);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 1.2;
+controls.maxDistance = 8;
+
+const hemiLight = new THREE.HemisphereLight(0x8ac9ff, 0x0b0c18, 0.8);
+scene.add(hemiLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.35);
+dirLight.position.set(4, 6, 3);
+scene.add(dirLight);
+
+const particleCount = 8000;
+const positions = new Float32Array(particleCount * 3);
+const targetPositions = new Float32Array(particleCount * 3);
+const velocities = new Float32Array(particleCount * 3);
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+
+const material = new THREE.PointsMaterial({ size: 0.035, color: '#6cf0ff', transparent: true, opacity: 0.9, depthWrite: false });
+material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <clipping_planes_fragment>',
+        '#include <clipping_planes_fragment>\nfloat d = distance(gl_PointCoord, vec2(0.5));\nfloat a = smoothstep(0.5, 0.2, d);\nif(a < 0.01) discard;\ngl_FragColor.a *= a;'
+    );
+};
+
+const points = new THREE.Points(geometry, material);
+scene.add(points);
+
+document.getElementById('particleCount').textContent = particleCount.toLocaleString();
+
+let currentShape = 'heart';
+let spreadFactor = 0.35;
+let scaleFactor = 1;
+let handState = 'idle';
+let cameraStarted = false;
+
+const sdfSample = (fn, count, scale = 1.0, padding = 1.0) => {
+    const result = [];
+    let attempts = 0;
+    const maxAttempts = count * 80;
+    while (result.length < count && attempts < maxAttempts) {
+        const p = new THREE.Vector3(
+            (Math.random() * 2 - 1) * padding,
+            (Math.random() * 2 - 1) * padding,
+            (Math.random() * 2 - 1) * padding
+        );
+        if (fn(p.clone()) <= 0) {
+            p.multiplyScalar(scale);
+            result.push(p);
+        }
+        attempts++;
+    }
+    while (result.length < count) {
+        result.push(new THREE.Vector3((Math.random() - 0.5) * scale, (Math.random() - 0.5) * scale, (Math.random() - 0.5) * scale));
+    }
+    return result;
+};
+
+const heartSDF = (p) => {
+    const x = p.x, y = p.y, z = p.z;
+    const a = x * x + (9 / 4) * y * y + z * z - 1;
+    return a * a * a - x * x * z * z * z - (9 / 80) * y * y * z * z * z;
+};
+
+const flowerSDF = (p) => {
+    const q = p.clone();
+    const r = Math.sqrt(q.x * q.x + q.z * q.z);
+    const petal = Math.sin(6 * Math.atan2(q.z, q.x)) * 0.35 + 0.65;
+    const d = Math.abs(r - petal) - 0.15;
+    return Math.max(d, Math.abs(q.y) - 0.25);
+};
+
+const starSDF = (p) => {
+    const a = Math.atan2(p.z, p.x);
+    const r = Math.sqrt(p.x * p.x + p.z * p.z);
+    const spikes = 5;
+    const m = Math.cos(spikes * a) * 0.35 + 0.65;
+    const d = r - m;
+    return Math.max(d, Math.abs(p.y) - 0.2);
+};
+
+const buddhaSDF = (p) => {
+    const head = p.clone().sub(new THREE.Vector3(0, 0.55, 0));
+    const body = p.clone().sub(new THREE.Vector3(0, 0, 0));
+    const base = p.clone().sub(new THREE.Vector3(0, -0.35, 0));
+    const headEllipsoid = head.set(head.x / 0.38, head.y / 0.55, head.z / 0.38).length() - 1.0;
+    const bodyEllipse = body.set(body.x / 0.6, body.y / 0.7, body.z / 0.5).length() - 1.0;
+    const legs = new THREE.Vector3(body.x, body.y + 0.3, body.z);
+    const legEllipse = legs.set(legs.x / 0.9, legs.y / 0.35, legs.z / 0.7).length() - 1.0;
+    const cushion = base.set(base.x / 1.05, base.y / 0.18, base.z / 1.05).length() - 1.0;
+    return Math.min(Math.min(headEllipsoid, bodyEllipse), Math.min(legEllipse, cushion));
+};
+
+const fireworkPoints = (count) => {
+    const res = [];
+    for (let i = 0; i < count; i++) {
+        const r = Math.pow(Math.random(), 0.5) * 1.2;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.cos(phi);
+        const z = r * Math.sin(phi) * Math.sin(theta);
+        res.push(new THREE.Vector3(x, y, z));
+    }
+    return res;
+};
+
+const shapeGenerators = {
+    heart: () => sdfSample(heartSDF, particleCount, 1.25, 1.1),
+    flower: () => sdfSample(flowerSDF, particleCount, 1.2, 1.15),
+    star: () => sdfSample(starSDF, particleCount, 1.4, 1.25),
+    buddha: () => sdfSample(buddhaSDF, particleCount, 1.1, 1.2),
+    firework: () => fireworkPoints(particleCount)
+};
+
+const updateTargetPositions = (shapeKey) => {
+    const generator = shapeGenerators[shapeKey] || shapeGenerators.heart;
+    const pts = generator();
+    for (let i = 0; i < particleCount; i++) {
+        const p = pts[i];
+        targetPositions[i * 3] = p.x;
+        targetPositions[i * 3 + 1] = p.y;
+        targetPositions[i * 3 + 2] = p.z;
+    }
+    geometry.attributes.position.needsUpdate = true;
+};
+
+updateTargetPositions(currentShape);
+
+const gestureLabel = document.getElementById('gestureLabel');
+const cameraDot = document.getElementById('cameraDot');
+const gestureDot = document.getElementById('gestureDot');
+const videoElement = document.getElementById('input_video');
+const videoBox = document.getElementById('videoBox');
+const outputCanvas = document.getElementById('output_canvas');
+const outputCtx = outputCanvas.getContext('2d');
+const startCameraBtn = document.getElementById('startCameraBtn');
+
+let hands, cameraMP;
+let cameraStarting = false;
+
+const startCamera = async () => {
+    if (cameraStarted || cameraStarting) return;
+    cameraStarting = true;
+    startCameraBtn.textContent = '启动中…';
+    try {
+        hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5,
         });
+        hands.onResults(onResults);
 
-        // 颜色映射
-        const colorMap = {
-            "root": "#d62828",      // 红色 - 总览节点
-            "family": "#f4a261",    // 橙色 - 家族分支
-            "ning": "#f77f00",      // 橙红 - 宁国府人物
-            "rong": "#2a9d8f",      // 绿色 - 荣国府人物
-            "wang": "#8ecae6",      // 浅蓝 - 王家人物
-            "lin": "#6a4c93",      // 紫色 - 林家人物
-            "shi": "#ffb703",      // 金色 - 史家人物
-            "xue": "#264653",      // 墨蓝 - 薛家人物
-            "other": "#adb5bd"      // 灰色 - 其他关联人物
-        };
+        cameraMP = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+        await cameraMP.start();
+        cameraStarted = true;
+        cameraDot.classList.add('live');
+        startCameraBtn.textContent = '摄像头已开启';
+        startCameraBtn.disabled = true;
+    } catch (err) {
+        console.error(err);
+        gestureLabel.textContent = '摄像头被阻止，请检查权限';
+        startCameraBtn.textContent = '重新尝试启动';
+        cameraDot.classList.remove('live');
+    } finally {
+        cameraStarting = false;
+    }
+};
 
-        // 节点图形映射
-        const nodeShapeMap = {
-            "root": "star",
-            "family": "square",
-            "ning": "diamond",
-            "rong": "circle",
-            "wang": "triangle",
-            "lin": "wye",
-            "shi": "cross",
-            "xue": "triangle",
-            "other": "circle"
-        };
+const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
-        // 关系类型颜色映射
-        const relationColorMap = {
-            "分支": "#495057",
-            "成员": "#adb5bd",
-            "父亲": "#5e548e",
-            "母亲": "#9f86c0",
-            "儿子": "#2a9d8f",
-            "女儿": "#e76f51",
-            "丈夫": "#264653",
-            "妻": "#e9c46a",
-            "妾": "#f4a261",
-            "丫环": "#8ecae6",
-            "丫头": "#8ecae6",
-            "小厮": "#4a4e69",
-            "乳母": "#b07d62",
-            "老奴": "#6c757d",
-            "主人": "#1d3557",
-            "兄弟": "#577590",
-            "姐妹": "#d4a373",
-            "哥哥": "#577590",
-            "弟弟": "#457b9d",
-            "姐姐": "#d4a373",
-            "妹妹": "#e5989b",
-            "姑母": "#dda15e",
-            "侄儿": "#ee9b00",
-            "侄女": "#f9844a",
-            "姑舅哥哥": "#e36414",
-            "外祖母": "#9d4edd",
-            "外孙女": "#4895ef",
-            "爷爷": "#4361ee",
-            "奶奶": "#560bad",
-            "孙子": "#4cc9f0",
-            "孙女": "#3a86ff",
-            "养父": "#1b4332",
-            "养子": "#2d6a4f",
-            "被抚养": "#81b29a",
-            "乾娘": "#7209b7",
-            "内侄女": "#ffafcc",
-            "大儿媳": "#f28482",
-            "小儿媳": "#ffccd5",
-            "儿媳": "#ffb4a2",
-            "婆婆": "#b5838d",
-            "姨母": "#cdb4db",
-            "外甥女": "#ffc8dd",
-            "陪房": "#6f4d7c",
-            "陪房丫头": "#6f4d7c",
-            "大丫头": "#74c69d",
-            "大丫环": "#74c69d",
-            "二房": "#c77dff",
-            "夫妻": "#ff8500",
-            "朋友": "#6d597a",
-            "好友": "#6d597a",
-            "好朋友": "#6d597a",
-            "好兄弟": "#6d597a",
-            "老师": "#277da1",
-            "女婿": "#bc4749",
-            "岳母": "#f94144",
-            "岳父": "#f3722c",
-            "伯父": "#9e2a2b",
-            "买办": "#495057",
-            "表兄妹": "#ffafcc",
-            "嫂子": "#f15bb5",
-            "相好": "#9c6644",
-            "暧昧": "#6c5b7b",
-            "二夫人": "#c77dff"
-        };
+const computeGesture = (landmarks) => {
+    const tips = [4, 8, 12, 16, 20];
+    const palmIndices = [0, 1, 5, 9, 13, 17];
+    const center = palmIndices.reduce((acc, idx) => {
+        acc.x += landmarks[idx].x;
+        acc.y += landmarks[idx].y;
+        acc.z += landmarks[idx].z;
+        return acc;
+    }, { x: 0, y: 0, z: 0 });
+    center.x /= palmIndices.length;
+    center.y /= palmIndices.length;
+    center.z /= palmIndices.length;
 
-        const LINK_LABEL_BASE_OFFSET = 12;
-        const LINK_LABEL_SEPARATION = 16;
-        const LINK_LABEL_ALONG_OFFSET = 6;
+    const distances = tips.map(idx => {
+        const tip = landmarks[idx];
+        const dx = tip.x - center.x;
+        const dy = tip.y - center.y;
+        const dz = tip.z - center.z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    });
+    const avg = distances.reduce((a, b) => a + b, 0) / distances.length;
+    const wrist = landmarks[0];
+    const mid = landmarks[9];
+    const palmSize = Math.sqrt(
+        Math.pow(wrist.x - mid.x, 2) +
+        Math.pow(wrist.y - mid.y, 2) +
+        Math.pow(wrist.z - mid.z, 2)
+    );
+    const openness = clamp((avg / palmSize - 0.6) * 1.8, 0, 1);
+    return openness;
+};
 
-        function prepareLinkLabelOffsets(links) {
-            const groupedLinks = new Map();
-
-            links.forEach(link => {
-                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-                const key = sourceId <= targetId ? `${sourceId}-${targetId}` : `${targetId}-${sourceId}`;
-
-                if (!groupedLinks.has(key)) {
-                    groupedLinks.set(key, []);
-                }
-                groupedLinks.get(key).push(link);
+const drawLandmarks = (results) => {
+    if (!outputCanvas.width) {
+        outputCanvas.width = videoElement.videoWidth;
+        outputCanvas.height = videoElement.videoHeight;
+    }
+    outputCtx.save();
+    outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+    outputCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
+    if (results.multiHandLandmarks) {
+        results.multiHandLandmarks.forEach(marks => {
+            outputCtx.strokeStyle = '#6cf0ff';
+            outputCtx.lineWidth = 3;
+            outputCtx.beginPath();
+            marks.forEach((p, i) => {
+                const x = p.x * outputCanvas.width;
+                const y = p.y * outputCanvas.height;
+                if (i === 0) outputCtx.moveTo(x, y); else outputCtx.lineTo(x, y);
             });
+            outputCtx.stroke();
+        });
+    }
+    outputCtx.restore();
+};
 
-            groupedLinks.forEach(group => {
-                group.forEach((link, index) => {
-                    link.labelIndex = index;
-                    link.labelCount = group.length;
-                });
-            });
-        }
+const onResults = (results) => {
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length) {
+        const openness = computeGesture(results.multiHandLandmarks[0]);
+        spreadFactor = THREE.MathUtils.lerp(spreadFactor, openness, 0.2);
+        scaleFactor = THREE.MathUtils.lerp(scaleFactor, THREE.MathUtils.lerp(0.65, 1.6, openness), 0.15);
+        handState = openness > 0.5 ? 'open' : 'closed';
+        gestureLabel.textContent = handState === 'open' ? '扩散 / 放大' : '收缩 / 聚焦';
+        gestureDot.classList.add('live');
+        drawLandmarks(results);
+    } else {
+        handState = 'idle';
+        gestureLabel.textContent = '等待手势…';
+        gestureDot.classList.remove('live');
+    }
+};
 
-        function calculateLinkLabelPosition(link) {
-            const sourceX = link.source.x !== undefined ? link.source.x : 0;
-            const sourceY = link.source.y !== undefined ? link.source.y : 0;
-            const targetX = link.target.x !== undefined ? link.target.x : 0;
-            const targetY = link.target.y !== undefined ? link.target.y : 0;
+const animate = () => {
+    requestAnimationFrame(animate);
+    controls.update();
+    const posAttr = geometry.getAttribute('position');
+    const velAttr = geometry.getAttribute('velocity');
+    for (let i = 0; i < particleCount; i++) {
+        const ix = i * 3;
+        const tx = targetPositions[ix] * scaleFactor;
+        const ty = targetPositions[ix + 1] * scaleFactor;
+        const tz = targetPositions[ix + 2] * scaleFactor;
 
-            const midX = (sourceX + targetX) / 2;
-            const midY = (sourceY + targetY) / 2;
+        const px = posAttr.array[ix];
+        const py = posAttr.array[ix + 1];
+        const pz = posAttr.array[ix + 2];
 
-            const dx = targetX - sourceX;
-            const dy = targetY - sourceY;
-            const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        let vx = velAttr.array[ix];
+        let vy = velAttr.array[ix + 1];
+        let vz = velAttr.array[ix + 2];
 
-            const perpendicularX = -dy / distance;
-            const perpendicularY = dx / distance;
-            const directionX = dx / distance;
-            const directionY = dy / distance;
+        const noise = spreadFactor * 0.4;
+        const accelStrength = spreadFactor > 0.5 ? 0.003 : 0.006;
 
-            const groupSize = link.labelCount || 1;
-            const indexOffset = link.labelIndex !== undefined ? (link.labelIndex - (groupSize - 1) / 2) : 0;
+        vx += (tx - px) * accelStrength + (Math.random() - 0.5) * noise * 0.002;
+        vy += (ty - py) * accelStrength + (Math.random() - 0.5) * noise * 0.002;
+        vz += (tz - pz) * accelStrength + (Math.random() - 0.5) * noise * 0.002;
 
-            const baseOffsetX = perpendicularX * LINK_LABEL_BASE_OFFSET;
-            const baseOffsetY = perpendicularY * LINK_LABEL_BASE_OFFSET;
-            const multiOffsetX = perpendicularX * LINK_LABEL_SEPARATION * indexOffset;
-            const multiOffsetY = perpendicularY * LINK_LABEL_SEPARATION * indexOffset;
-            const alongOffsetX = directionX * LINK_LABEL_ALONG_OFFSET;
-            const alongOffsetY = directionY * LINK_LABEL_ALONG_OFFSET;
+        vx *= 0.92;
+        vy *= 0.92;
+        vz *= 0.92;
 
-            return {
-                x: midX + baseOffsetX + multiOffsetX + alongOffsetX,
-                y: midY + baseOffsetY + multiOffsetY + alongOffsetY
-            };
-        }
+        posAttr.array[ix] = px + vx;
+        posAttr.array[ix + 1] = py + vy;
+        posAttr.array[ix + 2] = pz + vz;
 
-        // 类型名称映射
-        const typeNames = {
-            "root": "总览节点",
-            "family": "家族分支",
-            "ning": "宁国府人物",
-            "rong": "荣国府人物",
-            "wang": "王家人物",
-            "lin": "林家人物",
-            "shi": "史家人物",
-            "xue": "薛家人物",
-            "other": "其他关联人物"
-        };
+        velAttr.array[ix] = vx;
+        velAttr.array[ix + 1] = vy;
+        velAttr.array[ix + 2] = vz;
+    }
+    posAttr.needsUpdate = true;
+    renderer.render(scene, camera);
+};
 
-        // 全局变量
-        let simulation, zoom, g, node, link, text, linkLabels;
-        let currentTransform = d3.zoomIdentity;
-        let lastNodePositions = {};
-        let currentNode = null;
-        let relationTypes = new Set();
+animate();
 
-        // 初始化图谱
-        function initKnowledgeGraph() {
-            const width = document.getElementById('knowledge-graph').clientWidth;
-            const height = document.getElementById('knowledge-graph').clientHeight;
+const resize = () => {
+    const { clientWidth, clientHeight } = canvas;
+    camera.aspect = clientWidth / clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(clientWidth, clientHeight);
+};
+window.addEventListener('resize', resize);
 
-            // 清除之前的SVG内容
-            d3.select('#knowledge-graph').selectAll('*').remove();
+// UI bindings
+const shapeSelect = document.getElementById('shapeSelect');
+shapeSelect.addEventListener('change', (e) => {
+    currentShape = e.target.value;
+    updateTargetPositions(currentShape);
+});
 
-            prepareLinkLabelOffsets(graphData.links);
+document.getElementById('colorPicker').addEventListener('input', (e) => {
+    material.color.set(e.target.value);
+});
 
-            // 创建SVG元素
-            const svg = d3.select('#knowledge-graph')
-                .attr('width', width)
-                .attr('height', height);
-                
-            // 添加缩放和平移支持
-            zoom = d3.zoom()
-                .scaleExtent([0.1, 4])
-                .on('zoom', (event) => {
-                    currentTransform = event.transform;
-                    g.attr('transform', event.transform);
-                });
-                
-            svg.call(zoom);
-            
-            // 创建容器
-            g = svg.append('g');
-            
-            // 创建力导向图模拟 - 为根节点设置更强的中心力
-            simulation = d3.forceSimulation(graphData.nodes)
-                .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(100))
-                .force('charge', d3.forceManyBody().strength(d => d.id === 0 ? -1000 : -300))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(50));
-            
-            // 绘制连接线
-            link = g.append('g')
-                .attr('class', 'links')
-                .selectAll('line')
-                .data(graphData.links)
-                .enter().append('line')
-                .attr('class', 'link')
-                .attr('stroke', d => relationColorMap[d.type] || '#999')
-                .attr('stroke-width', 2);
-            
-            // 添加连线标签
-            linkLabels = g.append('g')
-                .attr('class', 'link-labels')
-                .selectAll('text')
-                .data(graphData.links)
-                .enter().append('text')
-                .attr('class', 'link-label')
-                .text(d => d.relation)
-                .style('display', 'none');
-            
-            // 绘制所有节点 - 根据类型使用不同图形
-            node = g.append('g')
-                .attr('class', 'nodes')
-                .selectAll('path')
-                .data(graphData.nodes)
-                .enter().append('path')
-                .attr('class', d => d.id === 0 ? 'star-node' : 'node')
-                .attr('d', d => {
-                    const size = d.id === 0 ? 400 : 150;
-                    switch(nodeShapeMap[d.type]) {
-                        case 'star': return d3.symbol().type(d3.symbolStar).size(size)();
-                        case 'square': return d3.symbol().type(d3.symbolSquare).size(size)();
-                        case 'triangle': return d3.symbol().type(d3.symbolTriangle).size(size)();
-                        case 'diamond': return d3.symbol().type(d3.symbolDiamond).size(size)();
-                        case 'cross': return d3.symbol().type(d3.symbolCross).size(size)();
-                        default: return d3.symbol().type(d3.symbolCircle).size(size)();
-                    }
-                })
-                .attr('fill', d => colorMap[d.type])
-                .attr('stroke', 'none') // 移除所有图形的黑边
-                .call(d3.drag()
-                    .on('start', dragstarted)
-                    .on('drag', dragged)
-                    .on('end', dragended))
-                .on('click', showNodeDetails);
-            
-            // 添加节点标签 - 根节点设置更大字体
-            text = g.append('g')
-                .attr('class', 'labels')
-                .selectAll('text')
-                .data(graphData.nodes)
-                .enter().append('text')
-                .attr('class', 'node-text')
-                .text(d => d.name)
-                .attr('text-anchor', 'middle')
-                .attr('dy', d => d.id === 0 ? -25 : -12) // 根节点标签位置调整
-                .style('font-size', d => d.id === 0 ? '14px' : '12px') // 根节点字体更大
-                .style('font-weight', d => d.id === 0 ? 'bold' : '500'); // 根节点字体加粗
-            
-            // 更新力导向图 - 确保节点和标签同步移动
-            simulation.on('tick', () => {
-                // 保存节点位置
-                graphData.nodes.forEach(n => {
-                    lastNodePositions[n.id] = { x: n.x, y: n.y };
-                });
-                
-                link
-                    .attr('x1', d => d.source.x)
-                    .attr('y1', d => d.source.y)
-                    .attr('x2', d => d.target.x)
-                    .attr('y2', d => d.target.y);
+startCameraBtn.addEventListener('click', startCamera);
 
-                linkLabels
-                    .each(function(d) {
-                        const position = calculateLinkLabelPosition(d);
-                        d._labelX = position.x;
-                        d._labelY = position.y;
-                    })
-                    .attr('x', d => d._labelX)
-                    .attr('y', d => d._labelY);
-                
-                // 所有节点使用transform定位，确保同步移动
-                node
-                    .attr('transform', d => `translate(${d.x},${d.y})`);
-                
-                text
-                    .attr('x', d => d.x)
-                    .attr('y', d => d.y);
-            });
-            
-            // 初始化关系类型筛选
-            initRelationFilters();
-            
-            // 工具栏功能
-            document.getElementById('zoom-in').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.scaleBy, 1.5);
-            });
-            
-            document.getElementById('zoom-out').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.scaleBy, 0.75);
-            });
-            
-            document.getElementById('reset-view').addEventListener('click', () => {
-                svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
-                resetNodeStyles();
-            });
-            
-            document.getElementById('center-graph').addEventListener('click', () => {
-                const bounds = document.getElementById('knowledge-graph').getBBox();
-                const parent = document.getElementById('knowledge-graph').parentElement;
-                const fullWidth = parent.clientWidth;
-                const fullHeight = parent.clientHeight;
-                const width = bounds.width;
-                const height = bounds.height;
-                const midX = bounds.x + width / 2;
-                const midY = bounds.y + height / 2;
-                
-                if (width === 0 || height === 0) return;
-                
-                const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
-                const translate = [
-                    fullWidth / 2 - scale * midX,
-                    fullHeight / 2 - scale * midY
-                ];
-                
-                svg.transition().duration(500).call(
-                    zoom.transform,
-                    d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-                );
-            });
-            
-            // 关闭详情面板
-            document.querySelector('.close-details').addEventListener('click', () => {
-                document.querySelector('.node-details').style.display = 'none';
-                resetNodeStyles();
-                currentNode = null;
-            });
-            
-            // 搜索功能
-            const searchInput = document.getElementById('search-input');
-            const searchResults = document.getElementById('search-results');
-            
-            searchInput.addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
-                searchResults.innerHTML = '';
-                
-                if (searchTerm.length === 0) {
-                    searchResults.style.display = 'none';
-                    resetNodeStyles();
-                    return;
-                }
-                
-                const foundNodes = graphData.nodes.filter(n => 
-                    n.name.toLowerCase().includes(searchTerm) || 
-                    n.description.toLowerCase().includes(searchTerm)
-                );
-                
-                if (foundNodes.length > 0) {
-                    searchResults.style.display = 'block';
-                    foundNodes.forEach(n => {
-                        const resultItem = document.createElement('div');
-                        resultItem.className = 'search-result-item';
-                        resultItem.textContent = n.name;
-                        resultItem.setAttribute('data-node-id', n.id);
-                        resultItem.addEventListener('click', () => {
-                            searchInput.value = '';
-                            searchResults.style.display = 'none';
-                            focusOnNode(n.id);
-                        });
-                        searchResults.appendChild(resultItem);
-                    });
-                } else {
-                    searchResults.style.display = 'none';
-                }
-                
-                // 高亮匹配节点
-                resetNodeStyles();
-                node.filter(d => foundNodes.some(n => n.id === d.id))
-                    .classed('highlighted', true);
-                text.filter(d => foundNodes.some(n => n.id === d.id))
-                    .classed('highlighted', true);
-            });
-            
-            // 点击其他地方关闭搜索结果
-            document.addEventListener('click', (e) => {
-                if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
-                    searchResults.style.display = 'none';
-                }
-            });
-            
-            // 知识领域筛选
-            const domainFilters = document.querySelectorAll('#domain-filters input');
-            domainFilters.forEach(filter => {
-                filter.addEventListener('change', applyFilters);
-            });
-            
-            // 关系类型筛选
-            const relationFilters = document.querySelectorAll('#relation-filters input');
-            relationFilters.forEach(filter => {
-                filter.addEventListener('change', applyFilters);
-            });
-            
-            // 图谱操作
-            document.getElementById('show-links').addEventListener('change', function() {
-                link.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('show-labels').addEventListener('change', function() {
-                text.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('show-link-labels').addEventListener('change', function() {
-                linkLabels.style('display', this.checked ? 'block' : 'none');
-            });
-            
-            document.getElementById('auto-layout').addEventListener('change', function() {
-                if (this.checked) {
-                    simulation.alphaTarget(0.3).restart();
-                } else {
-                    // 当自动布局关闭时，我们不完全停止模拟，而是保持一个非常低的alphaTarget
-                    // 这样节点仍然可以响应拖拽事件
-                    simulation.alphaTarget(0.001);
-                }
-            });
-        }
-        
-        // 初始化关系类型筛选
-        function initRelationFilters() {
-            const relationFiltersContainer = document.getElementById('relation-filters');
-            const relationLegendContainer = document.getElementById('relation-legend');
-            
-            // 收集所有关系类型
-            graphData.links.forEach(link => {
-                relationTypes.add(link.type);
-            });
-            
-            // 创建筛选器和图例
-            relationTypes.forEach(type => {
-                // 筛选器
-                const filterItem = document.createElement('label');
-                filterItem.innerHTML = `<input type="checkbox" name="relation" value="${type}" checked> ${type}`;
-                relationFiltersContainer.appendChild(filterItem);
-                
-                // 图例
-                const legendItem = document.createElement('div');
-                legendItem.className = 'relation-item';
-                legendItem.innerHTML = `
-                    <div class="relation-color" style="background-color: ${relationColorMap[type] || '#999'}"></div>
-                    <span>${type}</span>
-                `;
-                relationLegendContainer.appendChild(legendItem);
-            });
-        }
-        
-        // 应用筛选条件
-        function applyFilters() {
-            const selectedDomains = Array.from(document.querySelectorAll('#domain-filters input:checked'))
-                .map(input => input.value);
-                
-            const selectedRelations = Array.from(document.querySelectorAll('#relation-filters input:checked'))
-                .map(input => input.value);
-                
-            node.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
-            text.style('display', d => selectedDomains.includes(d.type) ? 'block' : 'none');
-            
-            // 隐藏/显示相关连线
-            link.style('display', d => {
-                const sourceVisible = selectedDomains.includes(d.source.type);
-                const targetVisible = selectedDomains.includes(d.target.type);
-                const relationVisible = selectedRelations.includes(d.type);
-                return sourceVisible && targetVisible && relationVisible ? 'block' : 'none';
-            });
-            
-            linkLabels.style('display', d => {
-                const sourceVisible = selectedDomains.includes(d.source.type);
-                const targetVisible = selectedDomains.includes(d.target.type);
-                const relationVisible = selectedRelations.includes(d.type);
-                const showLabels = document.getElementById('show-link-labels').checked;
-                return sourceVisible && targetVisible && relationVisible && showLabels ? 'block' : 'none';
-            });
-        }
-        
-        // 重置节点样式
-        function resetNodeStyles() {
-            node.classed('highlighted', false)
-                .attr('fill', d => colorMap[d.type])
-                .attr('stroke', 'none');
-                
-            text.classed('highlighted', false)
-                .style('font-weight', d => d.id === 0 ? 'bold' : 'normal')
-                .style('font-size', d => d.id === 0 ? '14px' : '12px');
-        }
-        
-        // 拖动函数 - 确保节点和图形同步移动
-        function dragstarted(event, d) {
-            // 当自动布局关闭时，我们仍然需要激活模拟，否则节点无法拖动
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
-        
-        function dragged(event, d) {
-            d.fx = event.x;
-            d.fy = event.y;
-        }
-        
-        function dragended(event, d) {
-            // 如果自动布局关闭，我们不完全停止模拟，而是保持一个非常低的alphaTarget
-            // 这样节点仍然可以响应拖拽事件
-            if (!event.active) {
-                if (document.getElementById('auto-layout').checked) {
-                    simulation.alphaTarget(0.3);
-                } else {
-                    simulation.alphaTarget(0.001);
-                }
-            }
-            d.fx = null;
-            d.fy = null;
-        }
-        
-        // 显示节点详情
-        function showNodeDetails(event, d) {
-            currentNode = d;
-            const detailsPanel = document.querySelector('.node-details');
-            document.getElementById('detail-title').textContent = d.name;
-            document.getElementById('detail-type').textContent = typeNames[d.type] || d.type;
-            document.getElementById('detail-description').textContent = d.description;
-            
-            // 清空相关节点
-            const relatedNodesContainer = document.getElementById('related-nodes');
-            relatedNodesContainer.innerHTML = '';
-            
-            // 查找相关节点
-            const relatedLinks = graphData.links.filter(link => 
-                link.source.id === d.id || link.target.id === d.id
-            );
-            
-            const relatedNodeIds = new Set();
-            relatedLinks.forEach(link => {
-                if (link.source.id !== d.id) relatedNodeIds.add(link.source.id);
-                if (link.target.id !== d.id) relatedNodeIds.add(link.target.id);
-            });
-            
-            // 添加相关节点
-            relatedNodeIds.forEach(id => {
-                const relatedNode = graphData.nodes.find(node => node.id === id);
-                if (relatedNode) {
-                    const nodeElement = document.createElement('div');
-                    nodeElement.className = 'related-node';
-                    nodeElement.textContent = relatedNode.name;
-                    nodeElement.setAttribute('data-node-id', relatedNode.id);
-                    nodeElement.addEventListener('click', (e) => {
-                        const nodeId = parseInt(e.target.getAttribute('data-node-id'));
-                        focusOnNode(nodeId);
-                    });
-                    relatedNodesContainer.appendChild(nodeElement);
-                }
-            });
-            
-            // 清空并填充人物小传
-            const bioListContainer = document.getElementById('bio-list');
-            bioListContainer.innerHTML = '';
+document.getElementById('fullscreen').addEventListener('click', () => {
+    const stage = document.getElementById('stage');
+    if (!document.fullscreenElement) {
+        stage.requestFullscreen?.();
+    } else {
+        document.exitFullscreen?.();
+    }
+});
 
-            if (d.highlights && d.highlights.length > 0) {
-                d.highlights.forEach(item => {
-                    const bioItem = document.createElement('p');
-                    bioItem.className = 'bio-item';
-                    bioItem.textContent = item;
-                    bioListContainer.appendChild(bioItem);
-                });
-            } else {
-                const noBio = document.createElement('p');
-                noBio.className = 'bio-empty';
-                noBio.textContent = '暂无更多人物介绍';
-                bioListContainer.appendChild(noBio);
-            }
-            
-            // 显示详情面板
-            detailsPanel.style.display = 'block';
-            
-            // 高亮当前节点
-            resetNodeStyles();
-            node.filter(d => d.id === currentNode.id)
-                .classed('highlighted', true)
-                .attr('stroke', '#ffcc00')
-                .attr('stroke-width', 3);
-                
-            text.filter(d => d.id === currentNode.id)
-                .classed('highlighted', true);
-        }
-        
-        // 定位到特定节点
-        function focusOnNode(nodeId) {
-            const nodeData = graphData.nodes.find(n => n.id === nodeId);
-            if (!nodeData) return;
-            
-            const svg = d3.select('#knowledge-graph');
-            const width = document.getElementById('knowledge-graph').clientWidth;
-            const height = document.getElementById('knowledge-graph').clientHeight;
-            
-            // 使用保存的位置信息
-            const nodePosition = lastNodePositions[nodeId] || { x: width/2, y: height/2 };
-            
-            // 计算缩放和平移
-            const scale = 2.5;
-            const x = width / 2 - scale * nodePosition.x;
-            const y = height / 2 - scale * nodePosition.y;
-            
-            // 执行动画
-            svg.transition()
-                .duration(750)
-                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
-            
-            // 高亮节点并显示详情
-            showNodeDetails(null, nodeData);
-        }
-        
-        // 初始化图谱
-        window.addEventListener('load', initKnowledgeGraph);
-        window.addEventListener('resize', initKnowledgeGraph);
-    </script>
+document.getElementById('toggleVideo').addEventListener('click', () => {
+    if (!cameraStarted && !cameraStarting) {
+        startCamera();
+    }
+    videoBox.style.display = videoBox.style.display === 'block' ? 'none' : 'block';
+});
+
+document.getElementById('recenter').addEventListener('click', () => {
+    spreadFactor = 0.35;
+    scaleFactor = 1;
+});
+
+</script>
 </body>
 </html>
